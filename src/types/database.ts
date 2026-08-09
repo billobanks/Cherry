@@ -81,6 +81,7 @@ interface ProfilesTable {
     cycle_regularity: CycleRegularity | null;
     goals: Goal[];
     onboarding_completed_at: string | null;
+    fertility_tracking_enabled: boolean;
     created_at: string;
     updated_at: string;
   };
@@ -94,6 +95,7 @@ interface ProfilesTable {
     cycle_regularity?: CycleRegularity | null;
     goals?: Goal[];
     onboarding_completed_at?: string | null;
+    fertility_tracking_enabled?: boolean;
   };
   Update: Partial<ProfilesTable["Insert"]>;
   Relationships: [];
@@ -230,6 +232,7 @@ interface DailyCheckinsTable {
     exercise: ExerciseIntensity | null;
     libido: number | null;
     notes: string | null;
+    intercourse: boolean | null;
     created_at: string;
     updated_at: string;
   };
@@ -245,6 +248,7 @@ interface DailyCheckinsTable {
     exercise?: ExerciseIntensity | null;
     libido?: number | null;
     notes?: string | null;
+    intercourse?: boolean | null;
   };
   Update: Partial<DailyCheckinsTable["Insert"]>;
   Relationships: [];

@@ -1,12 +1,6 @@
-import type { CyclePhase, PhaseRange } from "@/lib/cycle-engine";
+import type { PhaseRange } from "@/lib/cycle-engine";
 import { computeMarkerAngleDegrees, computeRingSegments, describeArc, polarToCartesian } from "@/lib/dashboard";
-
-const PHASE_COLOR_VAR: Record<CyclePhase, string> = {
-  menstrual: "var(--chart-1)",
-  follicular: "var(--chart-3)",
-  ovulation_window: "var(--chart-4)",
-  luteal: "var(--chart-2)",
-};
+import { PHASE_COLOR_VAR } from "@/lib/phase-colors";
 
 const SIZE = 220;
 const STROKE_WIDTH = 14;
