@@ -1,15 +1,10 @@
 "use server";
 
 import { CHECKIN_SYMPTOM_OPTIONS } from "@/lib/checkin";
-import {
-  DEFAULT_PERIOD_LENGTH_DAYS,
-  calculateCycleInsights,
-  diffDays,
-  parseISODate,
-} from "@/lib/cycle-engine";
+import { DEFAULT_PERIOD_LENGTH_DAYS, calculateCycleInsights } from "@/lib/cycle-engine";
 import { PHASE_SECTION_CONTENT, SECTION_TITLES } from "@/lib/insights";
-import { analyzeSymptomPatterns } from "@/lib/patterns";
-import type { HistoricalCycle, SymptomLogEntry } from "@/lib/patterns";
+import { analyzeSymptomPatterns, buildCompletedCycles } from "@/lib/patterns";
+import type { SymptomLogEntry } from "@/lib/patterns";
 import { createClient } from "@/lib/supabase/server";
 import { computeUpcomingChanges } from "./upcoming-changes";
 import type { DashboardData, PatternDisplay, RecommendedCard } from "./types";
@@ -170,19 +165,11 @@ async function getPatterns(
 ): Promise<PatternDisplay[]> {
   if (cycles.length < 3) return []; // need at least 2 completed cycles (3 boundary dates)
 
-  const completedCycles: HistoricalCycle[] = [];
-  for (let i = 0; i < cycles.length - 1; i++) {
-    const cycleLengthDays = diffDays(
-      parseISODate(cycles[i + 1].start_date),
-      parseISODate(cycles[i].start_date),
-    );
-    completedCycles.push({
-      startDate: cycles[i].start_date,
-      cycleLengthDays,
-      periodLengthDays:
-        cycles[i].period_length_days ?? fallbackPeriodLengthDays ?? DEFAULT_PERIOD_LENGTH_DAYS,
-    });
-  }
+  const completedCycles = buildCompletedCycles(
+    cycles,
+    fallbackPeriodLengthDays,
+    DEFAULT_PERIOD_LENGTH_DAYS,
+  );
 
   const { data: checkins } = await supabase
     .from("daily_checkins")

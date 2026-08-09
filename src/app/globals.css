@@ -79,6 +79,12 @@
   --chart-3: #5f6f52;
   --chart-4: #a48f77;
   --chart-5: #6b5b57;
+  /* Higher-chroma pair for My Patterns' trend charts — chart-1..5 above are
+     deliberately soft phase tints (ring/calendar backgrounds) and fail the
+     dataviz chroma floor; these are validated separately for data-ink use
+     (validate_palette.js: all checks pass, both modes). */
+  --viz-primary: #8e2a3b;
+  --viz-secondary: #0f7ea3;
   --radius: 0.85rem;
   --sidebar: #f2e9e2;
   --sidebar-foreground: #2a1e1f;
@@ -118,6 +124,8 @@
   --chart-3: #a3b491;
   --chart-4: #a48f77;
   --chart-5: #c2aaa6;
+  --viz-primary: #c85f70;
+  --viz-secondary: #2a8fae;
   --sidebar: #241a1c;
   --sidebar-foreground: #f3e9e6;
   --sidebar-primary: #e8949c;

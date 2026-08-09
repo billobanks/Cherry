@@ -1,10 +1,20 @@
-import { Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
+import Link from "next/link";
 import type { PatternDisplay } from "@/lib/dashboard";
 
 export function MyPatterns({ patterns }: { patterns: PatternDisplay[] }) {
   return (
     <div>
-      <h2 className="px-1 font-heading text-lg font-medium">My patterns</h2>
+      <div className="flex items-center justify-between px-1">
+        <h2 className="font-heading text-lg font-medium">My patterns</h2>
+        <Link
+          href="/patterns"
+          className="flex items-center gap-1 text-sm font-medium text-primary transition-opacity hover:opacity-70"
+        >
+          See all
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
 
       {patterns.length === 0 ? (
         <div className="mt-3 rounded-2xl border border-dashed border-border px-4 py-5 text-sm leading-relaxed text-muted-foreground">
