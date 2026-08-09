@@ -1,9 +1,28 @@
 /**
- * Hand-authored to match supabase/migrations/20260808000000_onboarding.sql.
+ * Hand-authored to match the migrations under supabase/migrations/.
  * Once the project is linked, regenerate with:
  *   supabase gen types typescript --linked > src/types/database.ts
  * and fold any future migrations' tables in here.
  */
+
+import type { CyclePhase } from "@/lib/cycle-engine";
+
+export type InsightSectionKey =
+  | "body_overview"
+  | "hormonal_changes"
+  | "energy"
+  | "mood"
+  | "skin"
+  | "digestion"
+  | "appetite_and_cravings"
+  | "sleep"
+  | "exercise"
+  | "nutrition"
+  | "self_care"
+  | "symptoms_to_monitor"
+  | "professional_guidance";
+
+export type InsightFeedbackResponse = "yes" | "no" | "a_little";
 
 export type PrimaryFocus =
   | "track_cycle"
@@ -163,6 +182,29 @@ interface NotificationPreferencesTable {
   Relationships: [];
 }
 
+interface DailyInsightFeedbackTable {
+  Row: {
+    id: string;
+    user_id: string;
+    insight_date: string;
+    cycle_phase: CyclePhase;
+    section_key: InsightSectionKey;
+    response: InsightFeedbackResponse;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    insight_date: string;
+    cycle_phase: CyclePhase;
+    section_key: InsightSectionKey;
+    response: InsightFeedbackResponse;
+  };
+  Update: Partial<DailyInsightFeedbackTable["Insert"]>;
+  Relationships: [];
+}
+
 export interface Database {
   __InternalSupabase: {
     PostgrestVersion: "13";
@@ -175,6 +217,7 @@ export interface Database {
       cycles: CyclesTable;
       period_day_logs: PeriodDayLogsTable;
       notification_preferences: NotificationPreferencesTable;
+      daily_insight_feedback: DailyInsightFeedbackTable;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
