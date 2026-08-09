@@ -64,6 +64,16 @@ export type DischargeType =
 export type ExerciseIntensity = "none" | "light" | "moderate" | "intense";
 export type CycleSource = "logged" | "predicted";
 export type DietaryPreference = "none" | "vegetarian" | "vegan" | "pescatarian";
+export type MovementType =
+  | "walking"
+  | "yoga"
+  | "stretching"
+  | "strength_training"
+  | "pilates"
+  | "cycling"
+  | "running"
+  | "hiit"
+  | "recovery_rest";
 export type NotificationChannel = "email" | "push";
 export type NotificationCategory =
   | "daily_checkin_reminder"
@@ -86,6 +96,7 @@ interface ProfilesTable {
     dietary_preference: DietaryPreference;
     food_allergies: string[];
     foods_to_avoid: string[];
+    workout_preferences: MovementType[];
     created_at: string;
     updated_at: string;
   };
@@ -103,6 +114,7 @@ interface ProfilesTable {
     dietary_preference?: DietaryPreference;
     food_allergies?: string[];
     foods_to_avoid?: string[];
+    workout_preferences?: MovementType[];
   };
   Update: Partial<ProfilesTable["Insert"]>;
   Relationships: [];

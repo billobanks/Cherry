@@ -4,7 +4,7 @@ import type { RecommendedCard } from "@/lib/dashboard";
 
 const CARD_HREF: Record<RecommendedCard["key"], string> = {
   nutrition: "/nutrition",
-  exercise: "/insights/today",
+  exercise: "/movement",
   self_care: "/insights/today",
   sleep: "/insights/today",
 };
