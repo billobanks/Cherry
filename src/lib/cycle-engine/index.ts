@@ -5,7 +5,14 @@ export {
   type DataQualityTier,
 } from "./confidence";
 export * from "./constants";
-export { InvalidDateError, addDays, diffDays, formatISODate, parseISODate } from "./date-utils";
+export {
+  InvalidDateError,
+  addDays,
+  diffDays,
+  formatISODate,
+  parseISODate,
+  todayEpochDays,
+} from "./date-utils";
 export { CYCLE_DISCLAIMERS } from "./disclaimers";
 export { CycleInputError, calculateCycleInsights } from "./engine";
 export { PHASE_LABELS } from "./labels";

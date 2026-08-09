@@ -50,6 +50,18 @@ export type Goal =
   | "fertility_awareness";
 
 export type FlowIntensity = "spotting" | "light" | "medium" | "heavy";
+/** Check-in flow adds "none" on top of period_day_logs' FlowIntensity — "logged today, no flow." */
+export type CheckinFlow = "none" | FlowIntensity;
+export type Mood = "happy" | "calm" | "anxious" | "irritable" | "sad" | "emotional" | "stressed";
+export type DischargeType =
+  | "none"
+  | "spotting"
+  | "sticky"
+  | "creamy"
+  | "watery"
+  | "egg_white"
+  | "unusual";
+export type ExerciseIntensity = "none" | "light" | "moderate" | "intense";
 export type CycleSource = "logged" | "predicted";
 export type NotificationChannel = "email" | "push";
 export type NotificationCategory =
@@ -205,6 +217,54 @@ interface DailyInsightFeedbackTable {
   Relationships: [];
 }
 
+interface DailyCheckinsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    checkin_date: string;
+    flow: CheckinFlow | null;
+    mood: Mood[];
+    energy_level: number | null;
+    sleep_quality: number | null;
+    discharge: DischargeType | null;
+    exercise: ExerciseIntensity | null;
+    libido: number | null;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    checkin_date: string;
+    flow?: CheckinFlow | null;
+    mood?: Mood[];
+    energy_level?: number | null;
+    sleep_quality?: number | null;
+    discharge?: DischargeType | null;
+    exercise?: ExerciseIntensity | null;
+    libido?: number | null;
+    notes?: string | null;
+  };
+  Update: Partial<DailyCheckinsTable["Insert"]>;
+  Relationships: [];
+}
+
+interface CheckinSymptomsTable {
+  Row: {
+    checkin_id: string;
+    user_id: string;
+    symptom_key: string;
+  };
+  Insert: {
+    checkin_id: string;
+    user_id: string;
+    symptom_key: string;
+  };
+  Update: Partial<CheckinSymptomsTable["Insert"]>;
+  Relationships: [];
+}
+
 export interface Database {
   __InternalSupabase: {
     PostgrestVersion: "13";
@@ -218,6 +278,8 @@ export interface Database {
       period_day_logs: PeriodDayLogsTable;
       notification_preferences: NotificationPreferencesTable;
       daily_insight_feedback: DailyInsightFeedbackTable;
+      daily_checkins: DailyCheckinsTable;
+      checkin_symptoms: CheckinSymptomsTable;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
