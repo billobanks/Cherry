@@ -2,6 +2,13 @@ import Link from "next/link";
 import { SECTION_ICONS } from "@/components/insights/section-icons";
 import type { RecommendedCard } from "@/lib/dashboard";
 
+const CARD_HREF: Record<RecommendedCard["key"], string> = {
+  nutrition: "/nutrition",
+  exercise: "/insights/today",
+  self_care: "/insights/today",
+  sleep: "/insights/today",
+};
+
 export function RecommendedToday({ cards }: { cards: RecommendedCard[] }) {
   return (
     <div>
@@ -12,7 +19,7 @@ export function RecommendedToday({ cards }: { cards: RecommendedCard[] }) {
           return (
             <Link
               key={card.key}
-              href="/insights/today"
+              href={CARD_HREF[card.key]}
               className="flex items-start gap-3 rounded-2xl border border-border bg-card px-4 py-4 transition-colors hover:border-primary/40"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">

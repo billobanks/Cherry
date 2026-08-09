@@ -63,6 +63,7 @@ export type DischargeType =
   | "unusual";
 export type ExerciseIntensity = "none" | "light" | "moderate" | "intense";
 export type CycleSource = "logged" | "predicted";
+export type DietaryPreference = "none" | "vegetarian" | "vegan" | "pescatarian";
 export type NotificationChannel = "email" | "push";
 export type NotificationCategory =
   | "daily_checkin_reminder"
@@ -82,6 +83,9 @@ interface ProfilesTable {
     goals: Goal[];
     onboarding_completed_at: string | null;
     fertility_tracking_enabled: boolean;
+    dietary_preference: DietaryPreference;
+    food_allergies: string[];
+    foods_to_avoid: string[];
     created_at: string;
     updated_at: string;
   };
@@ -96,6 +100,9 @@ interface ProfilesTable {
     goals?: Goal[];
     onboarding_completed_at?: string | null;
     fertility_tracking_enabled?: boolean;
+    dietary_preference?: DietaryPreference;
+    food_allergies?: string[];
+    foods_to_avoid?: string[];
   };
   Update: Partial<ProfilesTable["Insert"]>;
   Relationships: [];
