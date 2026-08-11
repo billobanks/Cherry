@@ -12,6 +12,7 @@ export interface CheckinFormValues {
   mood: Mood[];
   energyLevel: number | null;
   sleepQuality: number | null;
+  painSeverity: number | null;
   symptomKeys: string[];
   discharge: DischargeType | null;
   exercise: ExerciseIntensity | null;
@@ -26,6 +27,7 @@ export function emptyCheckinFormValues(checkinDate: string): CheckinFormValues {
     mood: [],
     energyLevel: null,
     sleepQuality: null,
+    painSeverity: null,
     symptomKeys: [],
     discharge: null,
     exercise: null,

@@ -15,6 +15,7 @@ describe("checkinFormSchema", () => {
       mood: ["happy", "stressed"],
       energyLevel: 3,
       sleepQuality: 4,
+      painSeverity: 2,
       symptomKeys: ["cramps", "bloating"],
       discharge: "creamy",
       exercise: "light",

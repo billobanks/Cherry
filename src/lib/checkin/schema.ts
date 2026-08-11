@@ -41,6 +41,7 @@ export const checkinFormSchema = z.object({
   mood: z.array(z.enum(MOOD_VALUES)).max(MOOD_VALUES.length),
   energyLevel: z.number().int().min(1).max(5).nullable(),
   sleepQuality: z.number().int().min(1).max(5).nullable(),
+  painSeverity: z.number().int().min(1).max(5).nullable(),
   symptomKeys: z.array(z.string()).max(30),
   discharge: z.enum(DISCHARGE_VALUES).nullable(),
   exercise: z.enum(EXERCISE_VALUES).nullable(),

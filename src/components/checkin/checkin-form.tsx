@@ -3,8 +3,9 @@
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { SafetyAlertBanner } from "@/components/safety/safety-alert-banner";
 import { Textarea } from "@/components/ui/textarea";
 import {
   CHECKIN_SYMPTOM_OPTIONS,
@@ -15,9 +16,11 @@ import {
   LIBIDO_SCALE_LABELS,
   MOOD_OPTIONS,
   NOTES_MAX_LENGTH,
+  PAIN_SCALE_LABELS,
   SLEEP_SCALE_LABELS,
   type CheckinFormValues,
 } from "@/lib/checkin";
+import { evaluateSafetySignals, type SafetyHistoryContext, type SafetyRuleContent } from "@/lib/safety";
 import { ChipSelect } from "./chip-select";
 import { ScaleSelector } from "./scale-selector";
 
@@ -25,14 +28,34 @@ export function CheckinForm({
   initialValues,
   isToday,
   onSave,
+  safetyRules,
+  safetyHistory,
 }: {
   initialValues: CheckinFormValues;
   isToday: boolean;
   onSave: (values: CheckinFormValues) => Promise<{ success: boolean; message?: string }>;
+  safetyRules: SafetyRuleContent[];
+  safetyHistory: SafetyHistoryContext;
 }) {
   const [values, setValues] = useState(initialValues);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  const safetyAlerts = useMemo(
+    () =>
+      evaluateSafetySignals(
+        {
+          flow: values.flow,
+          painSeverity: values.painSeverity,
+          previousPainSeverity: safetyHistory.previousPainSeverity,
+          symptomKeys: values.symptomKeys,
+          priorConsecutiveBleedingDays: safetyHistory.priorConsecutiveBleedingDays,
+          isOutsideExpectedBleedingWindow: safetyHistory.isOutsideExpectedBleedingWindow,
+        },
+        safetyRules,
+      ),
+    [values.flow, values.painSeverity, values.symptomKeys, safetyHistory, safetyRules],
+  );
 
   function update<K extends keyof CheckinFormValues>(key: K, value: CheckinFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -102,6 +125,13 @@ export function CheckinForm({
           scaleLabels={SLEEP_SCALE_LABELS}
         />
 
+        <ScaleSelector
+          label="Pain"
+          value={values.painSeverity}
+          onChange={(v) => update("painSeverity", v)}
+          scaleLabels={PAIN_SCALE_LABELS}
+        />
+
         <ChipSelect
           label="Symptoms"
           options={CHECKIN_SYMPTOM_OPTIONS.map((s) => ({ value: s.key, label: s.label }))}
@@ -109,6 +139,8 @@ export function CheckinForm({
           value={values.symptomKeys}
           onChange={(v) => update("symptomKeys", v)}
         />
+
+        {safetyAlerts.length > 0 ? <SafetyAlertBanner alerts={safetyAlerts} /> : null}
 
         <ChipSelect
           label="Discharge (optional)"

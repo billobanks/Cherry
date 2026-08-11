@@ -4,6 +4,7 @@ import { CheckinForm } from "@/components/checkin/checkin-form";
 import { RecentEntries } from "@/components/checkin/recent-entries";
 import { getCheckinForDate, getRecentCheckins, saveCheckin, RECENT_CHECKINS_LIMIT } from "@/lib/checkin";
 import { formatISODate, todayEpochDays } from "@/lib/cycle-engine";
+import { getSafetyContextForCheckin } from "@/lib/safety";
 
 export const metadata: Metadata = {
   title: "Daily check-in — Cherry",
@@ -17,9 +18,10 @@ export default async function CheckinPage(props: PageProps<"/checkin">) {
   const dateParam = typeof searchParams.date === "string" ? searchParams.date : undefined;
   const checkinDate = dateParam && DATE_PATTERN.test(dateParam) ? dateParam : todayISO;
 
-  const [checkinResult, recentResult] = await Promise.all([
+  const [checkinResult, recentResult, safetyContextResult] = await Promise.all([
     getCheckinForDate(checkinDate),
     getRecentCheckins(RECENT_CHECKINS_LIMIT),
+    getSafetyContextForCheckin(checkinDate),
   ]);
 
   if (checkinResult.status === "signed_out") {
@@ -35,6 +37,11 @@ export default async function CheckinPage(props: PageProps<"/checkin">) {
   }
 
   const recentEntries = recentResult.status === "ready" ? recentResult.entries : [];
+  const safetyRules = safetyContextResult.status === "ready" ? safetyContextResult.rules : [];
+  const safetyHistory =
+    safetyContextResult.status === "ready"
+      ? safetyContextResult.history
+      : { previousPainSeverity: null, priorConsecutiveBleedingDays: 0, isOutsideExpectedBleedingWindow: false };
 
   return (
     <div className="pb-28">
@@ -42,6 +49,8 @@ export default async function CheckinPage(props: PageProps<"/checkin">) {
         initialValues={checkinResult.values}
         isToday={checkinDate === todayISO}
         onSave={saveCheckin}
+        safetyRules={safetyRules}
+        safetyHistory={safetyHistory}
       />
 
       <div className="mx-auto mt-10 w-full max-w-2xl">

@@ -80,6 +80,14 @@ export type NotificationCategory =
   | "period_prediction"
   | "insight_digest"
   | "product_updates";
+export type SafetyRuleKey =
+  | "heavy_bleeding"
+  | "severe_or_worsening_pain"
+  | "fainting"
+  | "dizziness_with_heavy_bleeding"
+  | "unusual_bleeding_pattern"
+  | "prolonged_bleeding";
+export type SafetyRuleSeverity = "routine" | "urgent";
 
 interface ProfilesTable {
   Row: {
@@ -97,6 +105,7 @@ interface ProfilesTable {
     food_allergies: string[];
     foods_to_avoid: string[];
     workout_preferences: MovementType[];
+    is_admin: boolean;
     created_at: string;
     updated_at: string;
   };
@@ -115,6 +124,7 @@ interface ProfilesTable {
     food_allergies?: string[];
     foods_to_avoid?: string[];
     workout_preferences?: MovementType[];
+    is_admin?: boolean;
   };
   Update: Partial<ProfilesTable["Insert"]>;
   Relationships: [];
@@ -247,6 +257,7 @@ interface DailyCheckinsTable {
     mood: Mood[];
     energy_level: number | null;
     sleep_quality: number | null;
+    pain_severity: number | null;
     discharge: DischargeType | null;
     exercise: ExerciseIntensity | null;
     libido: number | null;
@@ -263,6 +274,7 @@ interface DailyCheckinsTable {
     mood?: Mood[];
     energy_level?: number | null;
     sleep_quality?: number | null;
+    pain_severity?: number | null;
     discharge?: DischargeType | null;
     exercise?: ExerciseIntensity | null;
     libido?: number | null;
@@ -288,6 +300,32 @@ interface CheckinSymptomsTable {
   Relationships: [];
 }
 
+interface SafetyRulesTable {
+  Row: {
+    rule_key: SafetyRuleKey;
+    label: string;
+    description: string;
+    severity: SafetyRuleSeverity;
+    message: string;
+    active: boolean;
+    params: Record<string, number | string | boolean>;
+    updated_at: string;
+    updated_by: string | null;
+  };
+  Insert: {
+    rule_key: SafetyRuleKey;
+    label: string;
+    description: string;
+    severity?: SafetyRuleSeverity;
+    message: string;
+    active?: boolean;
+    params?: Record<string, number | string | boolean>;
+    updated_by?: string | null;
+  };
+  Update: Partial<SafetyRulesTable["Insert"]>;
+  Relationships: [];
+}
+
 export interface Database {
   __InternalSupabase: {
     PostgrestVersion: "13";
@@ -303,6 +341,7 @@ export interface Database {
       daily_insight_feedback: DailyInsightFeedbackTable;
       daily_checkins: DailyCheckinsTable;
       checkin_symptoms: CheckinSymptomsTable;
+      safety_rules: SafetyRulesTable;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

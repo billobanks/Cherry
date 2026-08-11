@@ -40,7 +40,7 @@ export const DISCHARGE_OPTIONS: { value: DischargeType; label: string }[] = [
   { value: "unusual", label: "Unusual" },
 ];
 
-/** The check-in's fixed 12-symptom list. Keys line up with symptom_catalog. */
+/** The check-in's fixed symptom list. Keys line up with symptom_catalog. */
 export const CHECKIN_SYMPTOM_OPTIONS: { key: string; label: string }[] = [
   { key: "cramps", label: "Cramps" },
   { key: "bloating", label: "Bloating" },
@@ -54,11 +54,14 @@ export const CHECKIN_SYMPTOM_OPTIONS: { key: string; label: string }[] = [
   { key: "fatigue", label: "Fatigue" },
   { key: "food_cravings", label: "Cravings" },
   { key: "pelvic_discomfort", label: "Pelvic discomfort" },
+  { key: "dizziness", label: "Dizziness" },
+  { key: "fainting", label: "Fainting" },
 ];
 
 export const ENERGY_SCALE_LABELS = ["Very low", "Low", "Okay", "Good", "Great"];
 export const SLEEP_SCALE_LABELS = ["Very poor", "Poor", "Okay", "Good", "Great"];
 export const LIBIDO_SCALE_LABELS = ["Very low", "Low", "Okay", "High", "Very high"];
+export const PAIN_SCALE_LABELS = ["None", "Mild", "Moderate", "Strong", "Severe"];
 
 export const NOTES_MAX_LENGTH = 2000;
 
