@@ -124,9 +124,13 @@ export const accountSchema = z
       .refine((value) => /[a-zA-Z]/.test(value) && /[0-9]/.test(value), {
         message: "Mix letters and numbers for a stronger password.",
       }),
-    confirmPassword: z.string(),
+    // Optional: only the client form (which holds a second typed-in value to
+    // compare against) sends this. The server action's AccountDetails never
+    // includes it — the match is a client-side typo check, not something the
+    // server can re-verify — so it must not be required here.
+    confirmPassword: z.string().optional(),
   })
-  .refine((data) => data.password === data.confirmPassword, {
+  .refine((data) => data.confirmPassword === undefined || data.password === data.confirmPassword, {
     message: "Passwords don't match.",
     path: ["confirmPassword"],
   });
