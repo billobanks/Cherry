@@ -19,12 +19,14 @@ import {
   type TaggedLogEntry,
 } from "@/lib/patterns";
 import { createClient } from "@/lib/supabase/server";
+import { hasPremiumAccessForUser } from "@/lib/subscription";
 import type { MyPatternsData, PhasePatternSentence } from "./types";
 
 export type GetMyPatternsResult =
   | { status: "ready"; data: MyPatternsData }
   | { status: "needs_period_date" }
   | { status: "signed_out" }
+  | { status: "premium_required" }
   | { status: "error"; message: string };
 
 const SYMPTOM_LABEL_BY_KEY = Object.fromEntries(CHECKIN_SYMPTOM_OPTIONS.map((s) => [s.key, s.label]));
@@ -40,7 +42,6 @@ function toSentence(
   phase: CyclePhase,
   occurrences: number,
   eligibleCycles: number,
-  verb: string,
 ): PhasePatternSentence {
   return {
     key,
@@ -49,7 +50,7 @@ function toSentence(
     phaseLabel: phasePhrase(phase),
     occurrences,
     eligibleCycles,
-    sentence: `You've ${verb} ${label} during the ${phasePhrase(phase)} in ${occurrences} of your last ${eligibleCycles} cycles.`,
+    sentence: `You've noticed ${label} coming up during the ${phasePhrase(phase)} — ${occurrences} of your last ${eligibleCycles} cycles.`,
   };
 }
 
@@ -59,6 +60,13 @@ export async function getMyPatterns(): Promise<GetMyPatternsResult> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed_out" };
+
+  // Pattern recognition, advanced cycle reports, and historical trend
+  // analysis are Premium features — checked here, not just at the page
+  // level, so calling this action directly can't bypass entitlement.
+  if (!(await hasPremiumAccessForUser(supabase, user.id))) {
+    return { status: "premium_required" };
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -136,7 +144,7 @@ export async function getMyPatterns(): Promise<GetMyPatternsResult> {
   const symptomPhasePatterns = analyzeTaggedPatternsAllPhases(completedCycles, symptomLogs)
     .slice(0, 3)
     .map((p) =>
-      toSentence(p.key, SYMPTOM_LABEL_BY_KEY[p.key] ?? p.key, p.phase, p.occurrences, p.eligibleCycles, "logged"),
+      toSentence(p.key, (SYMPTOM_LABEL_BY_KEY[p.key] ?? p.key).toLowerCase(), p.phase, p.occurrences, p.eligibleCycles),
     );
 
   const moodFrequency = analyzeMostCommonSymptoms(moodLogs.map((m) => ({ date: m.date, symptomKey: m.key })))
@@ -146,20 +154,13 @@ export async function getMyPatterns(): Promise<GetMyPatternsResult> {
   const moodPatterns = analyzeTaggedPatternsAllPhases(completedCycles, moodLogs)
     .slice(0, 3)
     .map((p) =>
-      toSentence(
-        p.key,
-        `feeling ${MOOD_LABEL_BY_KEY[p.key] ?? p.key}`,
-        p.phase,
-        p.occurrences,
-        p.eligibleCycles,
-        "reported",
-      ),
+      toSentence(p.key, `feeling ${MOOD_LABEL_BY_KEY[p.key] ?? p.key}`, p.phase, p.occurrences, p.eligibleCycles),
     );
 
   const cravingLogs = symptomLogs.filter((s) => s.key === "food_cravings");
   const cravingPatterns = analyzeTaggedPatternsAllPhases(completedCycles, cravingLogs)
     .slice(0, 2)
-    .map((p) => toSentence(p.key, "cravings", p.phase, p.occurrences, p.eligibleCycles, "logged"));
+    .map((p) => toSentence(p.key, "cravings", p.phase, p.occurrences, p.eligibleCycles));
 
   const energy = analyzeEnergyPatterns(completedCycles, energyEntries);
   const sleep = analyzeSleepPatterns(completedCycles, sleepEntries);

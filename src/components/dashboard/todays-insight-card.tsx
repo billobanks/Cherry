@@ -18,7 +18,7 @@ export function TodaysInsightCard({
       </p>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{explanation}</p>
       <Link
-        href="/insights/today"
+        href="/app/insights"
         className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary transition-opacity hover:opacity-70"
       >
         Learn more

@@ -17,7 +17,10 @@ export default function Home() {
         href="/onboarding"
         className="mt-2 inline-flex h-12 items-center justify-center rounded-full bg-primary px-7 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
       >
-        Start onboarding
+        Get started
+      </Link>
+      <Link href="/login" className="text-sm font-medium text-primary underline">
+        Log in
       </Link>
     </div>
   );

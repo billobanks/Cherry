@@ -303,7 +303,7 @@ describe("analyzeEnergyPatterns", () => {
       expect.objectContaining({
         windowLabel: "2-3 days before your period",
         direction: "lower",
-        sentence: "You tend to report lower energy 2-3 days before your period.",
+        sentence: "You've tended to feel a bit more tired 2-3 days before your period.",
         cycleCount: 4,
       }),
     );
@@ -311,7 +311,7 @@ describe("analyzeEnergyPatterns", () => {
       expect.objectContaining({
         windowLabel: "days 8-13",
         direction: "higher",
-        sentence: "You often report improved energy around days 8-13.",
+        sentence: "Your energy has often felt a little brighter around days 8-13.",
         cycleCount: 4,
       }),
     );
@@ -342,7 +342,7 @@ describe("analyzeEnergyPatterns", () => {
 describe("analyzeSleepPatterns", () => {
   it("uses sleep-specific wording for the same window logic", () => {
     const { patterns } = analyzeSleepPatterns(FOUR_28DAY_CYCLES, PATTERNED_ENTRIES);
-    expect(patterns.some((p) => p.sentence.includes("sleep quality"))).toBe(true);
-    expect(patterns.some((p) => p.sentence.includes("lower sleep quality"))).toBe(true);
+    expect(patterns.some((p) => p.sentence.toLowerCase().includes("sleep"))).toBe(true);
+    expect(patterns.some((p) => /rougher/i.test(p.sentence))).toBe(true);
   });
 });

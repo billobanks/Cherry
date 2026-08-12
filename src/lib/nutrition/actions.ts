@@ -2,6 +2,7 @@
 
 import { calculateCycleInsights } from "@/lib/cycle-engine";
 import { createClient } from "@/lib/supabase/server";
+import { hasPremiumAccessForUser } from "@/lib/subscription";
 import type { DietaryPreference } from "@/types/database";
 import { PHASE_NUTRITION_CONTENT } from "./content";
 import { filterFoods, filterMeals } from "./filter";
@@ -12,6 +13,7 @@ export type GetNutritionDataResult =
   | { status: "ready"; data: NutritionData }
   | { status: "needs_period_date" }
   | { status: "signed_out" }
+  | { status: "premium_required" }
   | { status: "error"; message: string };
 
 export async function getNutritionData(): Promise<GetNutritionDataResult> {
@@ -20,6 +22,12 @@ export async function getNutritionData(): Promise<GetNutritionDataResult> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed_out" };
+
+  // Nutrition guidance is a Premium feature — checked here, not just at the
+  // page level, so calling this action directly can't bypass entitlement.
+  if (!(await hasPremiumAccessForUser(supabase, user.id))) {
+    return { status: "premium_required" };
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")

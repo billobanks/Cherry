@@ -88,7 +88,7 @@ export function CheckinForm({
         </span>
         <h1 className="mt-2 font-heading text-3xl font-medium text-balance">{formattedDate}</h1>
         {!isToday ? (
-          <Link href="/checkin" className="mt-1 inline-block text-sm text-primary underline">
+          <Link href="/app/check-in" className="mt-1 inline-block text-sm text-primary underline">
             Back to today
           </Link>
         ) : null}

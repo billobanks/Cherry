@@ -26,7 +26,7 @@ export function MovementView({
       {!hasLoggedToday ? (
         <div className="rounded-2xl border border-dashed border-border px-4 py-3.5 text-sm text-muted-foreground">
           This is based on your estimated cycle phase alone.{" "}
-          <Link href="/checkin" className="font-medium text-primary underline">
+          <Link href="/app/check-in" className="font-medium text-primary underline">
             Log today&apos;s check-in
           </Link>{" "}
           and we&apos;ll factor in your actual energy and symptoms.

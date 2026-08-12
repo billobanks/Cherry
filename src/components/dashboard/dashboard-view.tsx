@@ -1,7 +1,10 @@
 import type { DashboardData } from "@/lib/dashboard";
+import { AskCherryCard } from "./ask-cherry-card";
 import { GreetingHeader } from "./greeting-header";
 import { MyPatterns } from "./my-patterns";
 import { NextFewDays } from "./next-few-days";
+import { PregnancyEntryCard } from "./pregnancy-entry-card";
+import { PrivacyCenterCard } from "./privacy-center-card";
 import { RecommendedToday } from "./recommended-today";
 import { TodaysBodyCard } from "./todays-body-card";
 import { TodaysInsightCard } from "./todays-insight-card";
@@ -17,9 +20,12 @@ export function DashboardView({ data }: { data: DashboardData }) {
           explanation={data.todaysInsight.explanation}
         />
         <TodaysBodyCard body={data.todaysBody} />
+        <PregnancyEntryCard />
+        <AskCherryCard />
         <NextFewDays changes={data.upcomingChanges} />
         <RecommendedToday cards={data.recommended} />
         <MyPatterns patterns={data.patterns} />
+        <PrivacyCenterCard />
 
         <p className="px-1 text-center text-xs leading-relaxed text-muted-foreground">
           Estimates only — not a diagnosis, and never a substitute for contraception or medical

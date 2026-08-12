@@ -110,7 +110,7 @@ export function DayDetailPanel({
       ) : null}
 
       <Link
-        href={`/checkin?date=${detail.date}`}
+        href={`/app/check-in?date=${detail.date}`}
         className="mt-5 flex h-12 w-full items-center justify-center gap-1.5 rounded-full bg-primary text-[15px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
       >
         <Pencil className="h-4 w-4" />

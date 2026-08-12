@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
-import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
-import { getSymptomOptions } from "@/lib/onboarding/data";
+import { WelcomeScreen } from "@/components/onboarding/welcome-screen";
 
 export const metadata: Metadata = {
   title: "Get started — Cherry",
 };
 
-export default async function OnboardingPage() {
-  const symptomOptions = await getSymptomOptions();
-
-  return <OnboardingWizard symptomOptions={symptomOptions} />;
+export default function OnboardingPage() {
+  return <WelcomeScreen />;
 }

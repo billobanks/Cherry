@@ -2,12 +2,14 @@
 
 import { CHECKIN_SYMPTOM_OPTIONS } from "@/lib/checkin";
 import { DEFAULT_PERIOD_LENGTH_DAYS, calculateCycleInsights } from "@/lib/cycle-engine";
-import { PHASE_SECTION_CONTENT, SECTION_TITLES } from "@/lib/insights";
+import { SECTION_TITLES } from "@/lib/insights";
 import { analyzeSymptomPatterns, buildCompletedCycles } from "@/lib/patterns";
 import type { SymptomLogEntry } from "@/lib/patterns";
 import { createClient } from "@/lib/supabase/server";
+import { buildTodayEngineOutput } from "@/lib/today-engine";
+import type { TodayEngineSignals } from "@/lib/today-engine";
 import { computeUpcomingChanges } from "./upcoming-changes";
-import type { DashboardData, PatternDisplay, RecommendedCard } from "./types";
+import type { DashboardData, PatternDisplay, RecommendedCard, TodaysBody } from "./types";
 
 export type GetDashboardDataResult =
   | { status: "ready"; data: DashboardData }
@@ -19,8 +21,6 @@ const SYMPTOM_LABEL_BY_KEY = Object.fromEntries(
   CHECKIN_SYMPTOM_OPTIONS.map((s) => [s.key, s.label]),
 );
 
-const RECOMMENDED_KEYS = ["nutrition", "exercise", "self_care", "sleep"] as const;
-
 export async function getDashboardData(): Promise<GetDashboardDataResult> {
   const supabase = await createClient();
   const {
@@ -31,7 +31,7 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select(
-      "display_name, last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity",
+      "display_name, last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, goals, dietary_preference, food_allergies, foods_to_avoid, workout_preferences",
     )
     .eq("id", user.id)
     .single();
@@ -64,10 +64,8 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
     return { status: "error", message: "We couldn't estimate today's cycle phase." };
   }
 
-  const phaseContent = PHASE_SECTION_CONTENT[cycleInsights.currentPhase];
-
-  const [todaysBody, patterns] = await Promise.all([
-    getTodaysBody(supabase, user.id, cycleInsights.today),
+  const [{ body: todaysBody, signals: todaySignals }, patterns] = await Promise.all([
+    getTodaysData(supabase, user.id, cycleInsights.today),
     getPatterns(
       supabase,
       user.id,
@@ -84,11 +82,32 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
     nextPeriodDate: cycleInsights.estimatedNextPeriod.date,
   });
 
-  const recommended: RecommendedCard[] = RECOMMENDED_KEYS.map((key) => ({
-    key,
-    title: SECTION_TITLES[key],
-    teaser: phaseContent[key].points[0] ?? phaseContent[key].summary,
-  }));
+  // The single personalized-recommendation composer — combines cycle
+  // position, today's real signals, this user's own historical patterns,
+  // goals, and preferences. Rules-based and deterministic; see
+  // src/lib/today-engine/engine.ts.
+  const todayEngineOutput = buildTodayEngineOutput({
+    cycleDay: cycleInsights.currentCycleDay,
+    phase: cycleInsights.currentPhase,
+    today: todaySignals,
+    historicalPatterns: patterns,
+    goals: profile.goals,
+    dietaryPreference: profile.dietary_preference,
+    foodAllergies: profile.food_allergies,
+    foodsToAvoid: profile.foods_to_avoid,
+    preferredMovementTypes: profile.workout_preferences,
+  });
+
+  const recommended: RecommendedCard[] = [
+    {
+      key: "nutrition",
+      title: SECTION_TITLES.nutrition,
+      teaser: `${todayEngineOutput.nutrition.meal.title} — ${todayEngineOutput.nutrition.meal.description}`,
+    },
+    { key: "exercise", title: SECTION_TITLES.exercise, teaser: todayEngineOutput.movement.why },
+    { key: "self_care", title: SECTION_TITLES.self_care, teaser: todayEngineOutput.selfCare.suggestion },
+    { key: "sleep", title: SECTION_TITLES.sleep, teaser: todayEngineOutput.sleep.suggestion },
+  ];
 
   const data: DashboardData = {
     displayName: profile.display_name,
@@ -106,8 +125,8 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
       confidence: cycleInsights.estimatedNextPeriod.confidence,
     },
     todaysInsight: {
-      headline: phaseContent.energy.summary,
-      explanation: phaseContent.energy.points[0] ?? "",
+      headline: todayEngineOutput.headline,
+      explanation: todayEngineOutput.bodyInsight,
     },
     todaysBody,
     upcomingChanges,
@@ -120,11 +139,11 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
-async function getTodaysBody(
+async function getTodaysData(
   supabase: Supabase,
   userId: string,
   today: string,
-): Promise<DashboardData["todaysBody"]> {
+): Promise<{ body: TodaysBody; signals: TodayEngineSignals | null }> {
   const { data: checkin } = await supabase
     .from("daily_checkins")
     .select("id, mood, energy_level, sleep_quality")
@@ -134,11 +153,8 @@ async function getTodaysBody(
 
   if (!checkin) {
     return {
-      hasLoggedToday: false,
-      mood: [],
-      energyLevel: null,
-      sleepQuality: null,
-      hasCravings: false,
+      body: { hasLoggedToday: false, mood: [], energyLevel: null, sleepQuality: null, hasCravings: false },
+      signals: null,
     };
   }
 
@@ -147,12 +163,17 @@ async function getTodaysBody(
     .select("symptom_key")
     .eq("checkin_id", checkin.id);
 
+  const symptomKeys = (symptoms ?? []).map((s) => s.symptom_key);
+
   return {
-    hasLoggedToday: true,
-    mood: checkin.mood,
-    energyLevel: checkin.energy_level,
-    sleepQuality: checkin.sleep_quality,
-    hasCravings: (symptoms ?? []).some((s) => s.symptom_key === "food_cravings"),
+    body: {
+      hasLoggedToday: true,
+      mood: checkin.mood,
+      energyLevel: checkin.energy_level,
+      sleepQuality: checkin.sleep_quality,
+      hasCravings: symptomKeys.includes("food_cravings"),
+    },
+    signals: { energyLevel: checkin.energy_level, sleepQuality: checkin.sleep_quality, mood: checkin.mood, symptomKeys },
   };
 }
 

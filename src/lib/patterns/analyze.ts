@@ -53,8 +53,8 @@ function phaseDayRange(boundaries: PhaseDayBoundaries, phase: CyclePhase): [numb
 
 /**
  * Finds symptoms that recur during a given phase across past cycles — the
- * "you've logged headaches during this phase in 3 of your last 4 cycles"
- * signal. Pure: `completedCycles` must already be *past, finished* cycles
+ * "you've noticed headaches coming up during this phase in 3 of your last 4
+ * cycles" signal. Pure: `completedCycles` must already be *past, finished* cycles
  * (real cycleLengthDays, not the current in-progress one), which is the
  * caller's responsibility to filter for.
  */
@@ -394,8 +394,8 @@ export function analyzeEnergyPatterns(
       completedCycles,
       entries,
       "energy",
-      (w: string) => `You tend to report lower energy ${w}.`,
-      (w: string) => `You often report improved energy around ${w}.`,
+      (w: string) => `You've tended to feel a bit more tired ${w}.`,
+      (w: string) => `Your energy has often felt a little brighter around ${w}.`,
     ),
   };
 }
@@ -410,8 +410,8 @@ export function analyzeSleepPatterns(
       completedCycles,
       entries,
       "sleep quality",
-      (w: string) => `You tend to report lower sleep quality ${w}.`,
-      (w: string) => `You often report better sleep quality around ${w}.`,
+      (w: string) => `Your sleep has tended to feel a little rougher ${w}.`,
+      (w: string) => `Your sleep has often felt a bit better around ${w}.`,
     ),
   };
 }

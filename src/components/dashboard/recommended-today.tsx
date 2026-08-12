@@ -3,10 +3,10 @@ import { SECTION_ICONS } from "@/components/insights/section-icons";
 import type { RecommendedCard } from "@/lib/dashboard";
 
 const CARD_HREF: Record<RecommendedCard["key"], string> = {
-  nutrition: "/nutrition",
-  exercise: "/movement",
-  self_care: "/insights/today",
-  sleep: "/insights/today",
+  nutrition: "/app/nutrition",
+  exercise: "/app/movement",
+  self_care: "/app/insights",
+  sleep: "/app/insights",
 };
 
 export function RecommendedToday({ cards }: { cards: RecommendedCard[] }) {

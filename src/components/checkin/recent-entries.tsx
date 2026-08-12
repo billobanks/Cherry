@@ -41,7 +41,7 @@ export function RecentEntries({
         return (
           <Link
             key={entry.checkinDate}
-            href={`/checkin?date=${entry.checkinDate}`}
+            href={`/app/check-in?date=${entry.checkinDate}`}
             className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40"
           >
             <span className="w-16 shrink-0 text-sm font-semibold">

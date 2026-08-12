@@ -2,6 +2,7 @@
 
 import { calculateCycleInsights, parseISODate } from "@/lib/cycle-engine";
 import { createClient } from "@/lib/supabase/server";
+import { hasPremiumAccessForUser } from "@/lib/subscription";
 import type { MovementType } from "@/types/database";
 import { generateMovementRecommendation } from "./recommend";
 import type { MovementRecommendation } from "./types";
@@ -15,6 +16,7 @@ export type GetMovementRecommendationResult =
     }
   | { status: "needs_period_date" }
   | { status: "signed_out" }
+  | { status: "premium_required" }
   | { status: "error"; message: string };
 
 export async function getMovementRecommendation(): Promise<GetMovementRecommendationResult> {
@@ -23,6 +25,12 @@ export async function getMovementRecommendation(): Promise<GetMovementRecommenda
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed_out" };
+
+  // Exercise guidance is a Premium feature — checked here, not just at the
+  // page level, so calling this action directly can't bypass entitlement.
+  if (!(await hasPremiumAccessForUser(supabase, user.id))) {
+    return { status: "premium_required" };
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")

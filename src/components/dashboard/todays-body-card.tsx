@@ -34,7 +34,7 @@ export function TodaysBodyCard({ body }: { body: TodaysBody }) {
       </div>
 
       <Link
-        href="/checkin"
+        href="/app/check-in"
         className="mt-4 flex h-12 w-full items-center justify-center gap-1.5 rounded-full bg-primary text-[15px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
       >
         {body.hasLoggedToday ? "Edit check-in" : "Quick check-in"}

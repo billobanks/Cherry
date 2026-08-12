@@ -8,7 +8,7 @@ export function MyPatterns({ patterns }: { patterns: PatternDisplay[] }) {
       <div className="flex items-center justify-between px-1">
         <h2 className="font-heading text-lg font-medium">My patterns</h2>
         <Link
-          href="/patterns"
+          href="/app/patterns"
           className="flex items-center gap-1 text-sm font-medium text-primary transition-opacity hover:opacity-70"
         >
           See all
