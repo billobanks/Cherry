@@ -10,7 +10,12 @@ import {
 } from "@/lib/onboarding/actions";
 import { ONBOARDING_DRAFT_STORAGE_KEY } from "@/lib/onboarding/constants";
 import { signInWithGoogle } from "@/lib/onboarding/oauth";
-import { EMPTY_ONBOARDING_ANSWERS, type FinalizeOnboardingResult, type OnboardingAnswers } from "@/types/onboarding";
+import {
+  EMPTY_ONBOARDING_ANSWERS,
+  parseStoredOnboardingAnswers,
+  type FinalizeOnboardingResult,
+  type OnboardingAnswers,
+} from "@/types/onboarding";
 import { AccountStep } from "./steps/account-step";
 import { ConfirmEmailStep } from "./steps/confirm-email-step";
 import { PersonalizedWelcomeStep } from "./steps/personalized-welcome-step";
@@ -38,22 +43,14 @@ export function SignupFlow() {
   const hydratedRef = useRef(false);
 
   useEffect(() => {
-    let draft: OnboardingAnswers | null = null;
-    try {
-      const raw = sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY);
-      draft = raw ? (JSON.parse(raw) as OnboardingAnswers) : null;
-    } catch {
-      draft = null;
-    }
+    const draft = parseStoredOnboardingAnswers(sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY));
 
     const params = new URLSearchParams(window.location.search);
     const isOAuthReturn = params.get("oauth") === "1";
     const oauthFailed = params.get("oauthError") === "1";
 
-    if (draft) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAnswers(draft);
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAnswers(draft);
 
     if (oauthFailed) {
       toast.error("Google sign-in didn't go through — try again, or use email.");
@@ -66,7 +63,7 @@ export function SignupFlow() {
       window.history.replaceState({}, "", "/signup");
       setOauthFinalizing(true);
       startSubmitTransition(async () => {
-        const result = await persistOnboardingForCurrentUser(draft ?? EMPTY_ONBOARDING_ANSWERS);
+        const result = await persistOnboardingForCurrentUser(draft);
         setOauthFinalizing(false);
         handleFinalizeResult(result);
       });

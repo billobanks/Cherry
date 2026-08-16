@@ -57,6 +57,27 @@ export const EMPTY_ONBOARDING_ANSWERS: OnboardingAnswers = {
   },
 };
 
+/**
+ * Parses a sessionStorage draft defensively. Before onboarding was split
+ * into routed steps, the same storage key held a different shape
+ * (`{ stepIndex, answers, email, displayName }`), and any browser tab that
+ * still has that stale draft sitting around would otherwise get a
+ * shape-mismatched object back — e.g. `.goals` reads as `undefined` instead
+ * of `[]`, and the first `.includes()` call on it throws. Merging onto
+ * `EMPTY_ONBOARDING_ANSWERS` guarantees every field the app reads actually
+ * exists, regardless of what was really in storage.
+ */
+export function parseStoredOnboardingAnswers(raw: string | null): OnboardingAnswers {
+  if (!raw) return EMPTY_ONBOARDING_ANSWERS;
+  try {
+    const parsed = JSON.parse(raw) as Partial<OnboardingAnswers> | null;
+    if (!parsed || typeof parsed !== "object") return EMPTY_ONBOARDING_ANSWERS;
+    return { ...EMPTY_ONBOARDING_ANSWERS, ...parsed };
+  } catch {
+    return EMPTY_ONBOARDING_ANSWERS;
+  }
+}
+
 export interface AccountDetails {
   email: string;
   password: string;

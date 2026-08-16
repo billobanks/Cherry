@@ -49,14 +49,19 @@ export async function deleteAccount(): Promise<DeleteAccountResult> {
     }
   }
 
-  const serviceClient = createServiceRoleClient();
+  try {
+    const serviceClient = createServiceRoleClient();
 
-  await serviceClient.from("account_deletion_log").insert({ deleted_user_id: user.id });
+    await serviceClient.from("account_deletion_log").insert({ deleted_user_id: user.id });
 
-  const { error } = await serviceClient.auth.admin.deleteUser(user.id);
-  if (error) {
+    const { error } = await serviceClient.auth.admin.deleteUser(user.id);
+    if (error) {
+      return { status: "error", message: "Couldn't delete your account — please try again or contact support." };
+    }
+
+    return { status: "deleted" };
+  } catch (err) {
+    console.error("deleteAccount failed:", err);
     return { status: "error", message: "Couldn't delete your account — please try again or contact support." };
   }
-
-  return { status: "deleted" };
 }

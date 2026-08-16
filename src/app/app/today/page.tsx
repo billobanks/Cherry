@@ -17,13 +17,26 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
 
   // Pregnancy Mode replaces the cycle dashboard entirely once active — same
-  // "home" destination, different content.
+  // "home" destination, different content. Deliberately fails open (falls
+  // through to the regular dashboard) rather than crashing the one page
+  // every signed-in user lands on, if this lookup ever has a problem.
   if (user) {
-    const activePregnancy = await getActivePregnancy(supabase, user.id);
+    let activePregnancy = null;
+    try {
+      activePregnancy = await getActivePregnancy(supabase, user.id);
+    } catch (err) {
+      console.error("Couldn't check for an active pregnancy:", err);
+    }
     if (activePregnancy) redirect("/app/pregnancy");
   }
 
-  const result = await getDashboardData();
+  let result: Awaited<ReturnType<typeof getDashboardData>>;
+  try {
+    result = await getDashboardData();
+  } catch (err) {
+    console.error("Couldn't load dashboard data:", err);
+    return <EmptyState title="Something went wrong" description="We couldn't load your dashboard — please try again in a moment." />;
+  }
 
   if (result.status === "signed_out") {
     redirect("/login");

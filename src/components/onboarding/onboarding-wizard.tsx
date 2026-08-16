@@ -12,7 +12,7 @@ import type {
   NotificationCategory,
   PrimaryFocus,
 } from "@/types/database";
-import { EMPTY_ONBOARDING_ANSWERS, type OnboardingAnswers } from "@/types/onboarding";
+import { EMPTY_ONBOARDING_ANSWERS, parseStoredOnboardingAnswers, type OnboardingAnswers } from "@/types/onboarding";
 import { CycleLengthStep } from "./steps/cycle-length-step";
 import { FocusStep } from "./steps/focus-step";
 import { GoalsStep } from "./steps/goals-step";
@@ -43,19 +43,11 @@ export function OnboardingWizard({
   const hydratedRef = useRef(false);
 
   useEffect(() => {
-    let draft: OnboardingAnswers | null = null;
-    try {
-      const raw = sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY);
-      draft = raw ? (JSON.parse(raw) as OnboardingAnswers) : null;
-    } catch {
-      draft = null;
-    }
-    if (draft) {
-      // sessionStorage only exists client-side, so this can't be a lazy
-      // useState initializer without desyncing from the server-rendered HTML.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAnswers(draft);
-    }
+    const draft = parseStoredOnboardingAnswers(sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY));
+    // sessionStorage only exists client-side, so this can't be a lazy
+    // useState initializer without desyncing from the server-rendered HTML.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAnswers(draft);
     setSubIndex(0);
     hydratedRef.current = true;
   }, [slug]);

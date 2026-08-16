@@ -22,18 +22,33 @@ export type ListAdminUsersResult =
 
 const PAGE_SIZE = 100;
 
+/** Isolates the service-role call so a missing/misconfigured SUPABASE_SERVICE_ROLE_KEY surfaces as a clean error, not a crash. */
+async function listAuthUsers(): Promise<{ status: "ready"; users: { id: string; email: string | null; created_at: string }[] } | { status: "error" }> {
+  try {
+    const serviceClient = createServiceRoleClient();
+    const { data, error } = await serviceClient.auth.admin.listUsers({ page: 1, perPage: PAGE_SIZE });
+    if (error) {
+      console.error("listAdminUsers: auth.admin.listUsers failed:", error.message);
+      return { status: "error" };
+    }
+    return {
+      status: "ready",
+      users: data.users.map((u) => ({ id: u.id, email: u.email ?? null, created_at: u.created_at })),
+    };
+  } catch (err) {
+    console.error("listAdminUsers: couldn't reach the service-role client:", err);
+    return { status: "error" };
+  }
+}
+
 export async function listAdminUsers(): Promise<ListAdminUsersResult> {
   const guard = await requireAdmin();
   if (!guard.ok) return { status: guard.reason };
   const { supabase } = guard;
 
-  const serviceClient = createServiceRoleClient();
-  const {
-    data: { users: authUsers },
-    error: authError,
-  } = await serviceClient.auth.admin.listUsers({ page: 1, perPage: PAGE_SIZE });
-
-  if (authError) return { status: "error", message: "Couldn't load users." };
+  const authResult = await listAuthUsers();
+  if (authResult.status === "error") return { status: "error", message: "Couldn't load users." };
+  const authUsers = authResult.users;
 
   const ids = authUsers.map((u) => u.id);
   if (ids.length === 0) return { status: "ready", users: [] };
