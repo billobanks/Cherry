@@ -30,8 +30,14 @@ export default async function CheckinPage(props: PageProps<"/app/check-in">) {
 
   if (checkinResult.status === "error") {
     return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-[15px] text-muted-foreground">{checkinResult.message}</p>
+        <a
+          href="/app/check-in"
+          className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground"
+        >
+          Try again
+        </a>
       </div>
     );
   }

@@ -18,8 +18,14 @@ export default async function ProfilePage() {
 
   if (result.status === "error") {
     return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-[15px] text-muted-foreground">{result.message}</p>
+        <a
+          href="/app/profile"
+          className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground"
+        >
+          Try again
+        </a>
       </div>
     );
   }
