@@ -26,6 +26,8 @@ export async function getDataOverview(): Promise<GetDataOverviewResult> {
     return { status: "error", message: "We couldn't load your account." };
   }
 
+  const { data: conversation } = await supabase.from("ai_conversations").select("id").eq("user_id", user.id).maybeSingle();
+
   const [
     { count: cyclesLogged },
     { count: checkinsLogged },
@@ -33,10 +35,12 @@ export async function getDataOverview(): Promise<GetDataOverviewResult> {
     { count: assistantMessages },
     { count: pregnancyCheckinsLogged },
   ] = await Promise.all([
-    supabase.from("cycles").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("daily_checkins").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("checkin_symptoms").select("checkin_id", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("assistant_messages").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("menstrual_cycles").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("daily_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("symptom_logs").select("daily_log_id", { count: "exact", head: true }).eq("user_id", user.id),
+    conversation
+      ? supabase.from("ai_messages").select("id", { count: "exact", head: true }).eq("conversation_id", conversation.id)
+      : Promise.resolve({ count: 0 }),
     supabase.from("pregnancy_daily_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id),
   ]);
 
@@ -70,13 +74,13 @@ export async function getRecentEntries(): Promise<GetRecentEntriesResult> {
 
   const [{ data: cycleRows, error: cycleError }, { data: checkinRows, error: checkinError }] = await Promise.all([
     supabase
-      .from("cycles")
+      .from("menstrual_cycles")
       .select("id, start_date, end_date, period_length_days, cycle_length_days, source")
       .eq("user_id", user.id)
       .order("start_date", { ascending: false })
       .limit(RECENT_ENTRIES_LIMIT),
     supabase
-      .from("daily_checkins")
+      .from("daily_logs")
       .select("id, checkin_date, flow, notes")
       .eq("user_id", user.id)
       .order("checkin_date", { ascending: false })
@@ -90,12 +94,12 @@ export async function getRecentEntries(): Promise<GetRecentEntriesResult> {
   const checkinIds = (checkinRows ?? []).map((c) => c.id);
   const { data: symptomRows } =
     checkinIds.length > 0
-      ? await supabase.from("checkin_symptoms").select("checkin_id").in("checkin_id", checkinIds)
-      : { data: [] as { checkin_id: string }[] };
+      ? await supabase.from("symptom_logs").select("daily_log_id").in("daily_log_id", checkinIds)
+      : { data: [] as { daily_log_id: string }[] };
 
   const symptomCountByCheckinId = new Map<string, number>();
   for (const row of symptomRows ?? []) {
-    symptomCountByCheckinId.set(row.checkin_id, (symptomCountByCheckinId.get(row.checkin_id) ?? 0) + 1);
+    symptomCountByCheckinId.set(row.daily_log_id, (symptomCountByCheckinId.get(row.daily_log_id) ?? 0) + 1);
   }
 
   return {
@@ -141,27 +145,54 @@ export async function exportUserData(): Promise<ExportUserDataResult> {
     return { status: "rate_limited", retryAfterSeconds: rateLimit.retryAfterSeconds };
   }
 
-  const [profile, cycles, periodDayLogs, checkins, checkinSymptoms, commonSymptoms, notificationPreferences, assistantMessages, subscription] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "display_name, primary_focus, last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, goals, fertility_tracking_enabled, dietary_preference, food_allergies, foods_to_avoid, workout_preferences, personalization_enabled, created_at",
-        )
-        .eq("id", user.id)
-        .single(),
-      supabase.from("cycles").select("start_date, end_date, cycle_length_days, period_length_days, source").eq("user_id", user.id),
-      supabase.from("period_day_logs").select("log_date, flow_intensity").eq("user_id", user.id),
-      supabase
-        .from("daily_checkins")
-        .select("checkin_date, flow, mood, energy_level, sleep_quality, pain_severity, discharge, exercise, libido, notes, intercourse")
-        .eq("user_id", user.id),
-      supabase.from("checkin_symptoms").select("checkin_id, symptom_key").eq("user_id", user.id),
-      supabase.from("profile_common_symptoms").select("symptom_key, created_at").eq("user_id", user.id),
-      supabase.from("notification_preferences").select("channel, category, enabled").eq("user_id", user.id),
-      supabase.from("assistant_messages").select("role, content, created_at").eq("user_id", user.id).order("created_at"),
-      supabase.from("subscriptions").select("plan, status, current_period_end, cancel_at_period_end").eq("user_id", user.id).maybeSingle(),
-    ]);
+  const { data: conversation } = await supabase.from("ai_conversations").select("id").eq("user_id", user.id).maybeSingle();
+
+  const [
+    profile,
+    preferences,
+    goals,
+    cycles,
+    periodDayLogs,
+    checkins,
+    moodLogs,
+    sleepLogs,
+    energyLogs,
+    checkinSymptoms,
+    commonSymptoms,
+    notificationPreferences,
+    assistantMessages,
+    subscription,
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "display_name, primary_focus, last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, created_at",
+      )
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("user_preferences")
+      .select("fertility_tracking_enabled, dietary_preference, food_allergies, foods_to_avoid, workout_preferences, personalization_enabled")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("user_goals").select("goal_key").eq("user_id", user.id),
+    supabase.from("menstrual_cycles").select("start_date, end_date, cycle_length_days, period_length_days, source").eq("user_id", user.id),
+    supabase.from("period_logs").select("log_date, flow_intensity").eq("user_id", user.id),
+    supabase
+      .from("daily_logs")
+      .select("id, checkin_date, flow, pain_severity, discharge, exercise, libido, notes, intercourse")
+      .eq("user_id", user.id),
+    supabase.from("mood_logs").select("daily_log_id, mood_key").eq("user_id", user.id),
+    supabase.from("sleep_logs").select("daily_log_id, sleep_quality").eq("user_id", user.id),
+    supabase.from("energy_logs").select("daily_log_id, energy_level").eq("user_id", user.id),
+    supabase.from("symptom_logs").select("daily_log_id, symptom_key").eq("user_id", user.id),
+    supabase.from("profile_common_symptoms").select("symptom_key, created_at").eq("user_id", user.id),
+    supabase.from("notification_preferences").select("channel, category, enabled").eq("user_id", user.id),
+    conversation
+      ? supabase.from("ai_messages").select("role, content, created_at").eq("conversation_id", conversation.id).order("created_at")
+      : Promise.resolve({ data: [] as { role: string; content: string; created_at: string }[] }),
+    supabase.from("subscriptions").select("plan, status, current_period_end, cancel_at_period_end").eq("user_id", user.id).maybeSingle(),
+  ]);
 
   const [
     pregnancies,
@@ -200,10 +231,15 @@ export async function exportUserData(): Promise<ExportUserDataResult> {
     status: "ready",
     exportedAt: new Date().toISOString(),
     data: {
-      account: { email: user.email, ...profile.data },
+      account: { email: user.email, ...(profile.data ?? {}) },
+      preferences: preferences.data ?? {},
+      goals: (goals.data ?? []).map((g) => g.goal_key),
       cycles: cycles.data ?? [],
       periodDayLogs: periodDayLogs.data ?? [],
       dailyCheckins: checkins.data ?? [],
+      moodLogs: moodLogs.data ?? [],
+      sleepLogs: sleepLogs.data ?? [],
+      energyLogs: energyLogs.data ?? [],
       checkinSymptoms: checkinSymptoms.data ?? [],
       commonSymptoms: commonSymptoms.data ?? [],
       notificationPreferences: notificationPreferences.data ?? [],

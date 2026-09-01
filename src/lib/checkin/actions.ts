@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import type { Mood } from "@/types/database";
 import { checkinFormSchema } from "./schema";
 import { derivePeriodLogSyncAction } from "./sync";
 import { emptyCheckinFormValues, type CheckinFormValues, type CheckinSummary } from "./types";
@@ -18,7 +19,7 @@ export async function getCheckinForDate(checkinDate: string): Promise<GetCheckin
   if (!user) return { status: "signed_out" };
 
   const { data: row, error } = await supabase
-    .from("daily_checkins")
+    .from("daily_logs")
     .select("*")
     .eq("user_id", user.id)
     .eq("checkin_date", checkinDate)
@@ -32,19 +33,21 @@ export async function getCheckinForDate(checkinDate: string): Promise<GetCheckin
     return { status: "ready", values: emptyCheckinFormValues(checkinDate) };
   }
 
-  const { data: symptomRows } = await supabase
-    .from("checkin_symptoms")
-    .select("symptom_key")
-    .eq("checkin_id", row.id);
+  const [{ data: symptomRows }, { data: moodRows }, { data: sleepRow }, { data: energyRow }] = await Promise.all([
+    supabase.from("symptom_logs").select("symptom_key").eq("daily_log_id", row.id),
+    supabase.from("mood_logs").select("mood_key").eq("daily_log_id", row.id),
+    supabase.from("sleep_logs").select("sleep_quality").eq("daily_log_id", row.id).maybeSingle(),
+    supabase.from("energy_logs").select("energy_level").eq("daily_log_id", row.id).maybeSingle(),
+  ]);
 
   return {
     status: "ready",
     values: {
       checkinDate: row.checkin_date,
       flow: row.flow,
-      mood: row.mood,
-      energyLevel: row.energy_level,
-      sleepQuality: row.sleep_quality,
+      mood: (moodRows ?? []).map((m) => m.mood_key),
+      energyLevel: energyRow?.energy_level ?? null,
+      sleepQuality: sleepRow?.sleep_quality ?? null,
       painSeverity: row.pain_severity,
       symptomKeys: (symptomRows ?? []).map((s) => s.symptom_key),
       discharge: row.discharge,
@@ -71,16 +74,13 @@ export async function saveCheckin(
 
   const data = parsed.data;
 
-  const { data: checkin, error: checkinError } = await supabase
-    .from("daily_checkins")
+  const { data: dailyLog, error: dailyLogError } = await supabase
+    .from("daily_logs")
     .upsert(
       {
         user_id: user.id,
         checkin_date: data.checkinDate,
         flow: data.flow,
-        mood: data.mood,
-        energy_level: data.energyLevel,
-        sleep_quality: data.sleepQuality,
         pain_severity: data.painSeverity,
         discharge: data.discharge,
         exercise: data.exercise,
@@ -92,18 +92,18 @@ export async function saveCheckin(
     .select("id")
     .single();
 
-  if (checkinError || !checkin) {
+  if (dailyLogError || !dailyLog) {
     return { success: false, message: "Couldn't save your check-in — please try again." };
   }
 
-  const symptomSyncError = await syncCheckinSymptoms(
-    supabase,
-    checkin.id,
-    user.id,
-    data.symptomKeys,
-  );
-  if (symptomSyncError) {
-    return { success: true, message: "Saved, but your symptoms didn't all save — try re-selecting them." };
+  const [symptomSyncFailed, moodSyncFailed, sleepSyncFailed, energySyncFailed] = await Promise.all([
+    syncSymptomLogs(supabase, dailyLog.id, user.id, data.symptomKeys),
+    syncMoodLogs(supabase, dailyLog.id, user.id, data.mood),
+    syncSleepLog(supabase, dailyLog.id, user.id, data.sleepQuality),
+    syncEnergyLog(supabase, dailyLog.id, user.id, data.energyLevel),
+  ]);
+  if (symptomSyncFailed || moodSyncFailed || sleepSyncFailed || energySyncFailed) {
+    return { success: true, message: "Saved, but a few fields didn't all save — try re-entering them." };
   }
 
   const periodLogError = await syncPeriodLog(supabase, user.id, data.checkinDate, data.flow);
@@ -116,27 +116,65 @@ export async function saveCheckin(
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
-async function syncCheckinSymptoms(
+async function syncSymptomLogs(
   supabase: Supabase,
-  checkinId: string,
+  dailyLogId: string,
   userId: string,
   symptomKeys: string[],
 ): Promise<boolean> {
   const { error: deleteError } = await supabase
-    .from("checkin_symptoms")
+    .from("symptom_logs")
     .delete()
-    .eq("checkin_id", checkinId);
+    .eq("daily_log_id", dailyLogId);
   if (deleteError) return true;
 
   if (symptomKeys.length === 0) return false;
 
-  const { error: insertError } = await supabase.from("checkin_symptoms").insert(
+  const { error: insertError } = await supabase.from("symptom_logs").insert(
     symptomKeys.map((symptomKey) => ({
-      checkin_id: checkinId,
+      daily_log_id: dailyLogId,
       user_id: userId,
       symptom_key: symptomKey,
     })),
   );
+  return Boolean(insertError);
+}
+
+async function syncMoodLogs(supabase: Supabase, dailyLogId: string, userId: string, mood: Mood[]): Promise<boolean> {
+  const { error: deleteError } = await supabase.from("mood_logs").delete().eq("daily_log_id", dailyLogId);
+  if (deleteError) return true;
+
+  if (mood.length === 0) return false;
+
+  const { error: insertError } = await supabase
+    .from("mood_logs")
+    .insert(mood.map((moodKey) => ({ daily_log_id: dailyLogId, user_id: userId, mood_key: moodKey })));
+  return Boolean(insertError);
+}
+
+// sleep_logs and energy_logs are both "at most one row per daily_logs entry"
+// — delete-then-insert keeps null vs. set consistent without an
+// upsert-on-nullable-unique dance. Kept as two small functions rather than
+// one generic helper so each insert's shape stays concretely typed.
+async function syncSleepLog(supabase: Supabase, dailyLogId: string, userId: string, sleepQuality: number | null): Promise<boolean> {
+  const { error: deleteError } = await supabase.from("sleep_logs").delete().eq("daily_log_id", dailyLogId);
+  if (deleteError) return true;
+  if (sleepQuality == null) return false;
+
+  const { error: insertError } = await supabase
+    .from("sleep_logs")
+    .insert({ daily_log_id: dailyLogId, user_id: userId, sleep_quality: sleepQuality });
+  return Boolean(insertError);
+}
+
+async function syncEnergyLog(supabase: Supabase, dailyLogId: string, userId: string, energyLevel: number | null): Promise<boolean> {
+  const { error: deleteError } = await supabase.from("energy_logs").delete().eq("daily_log_id", dailyLogId);
+  if (deleteError) return true;
+  if (energyLevel == null) return false;
+
+  const { error: insertError } = await supabase
+    .from("energy_logs")
+    .insert({ daily_log_id: dailyLogId, user_id: userId, energy_level: energyLevel });
   return Boolean(insertError);
 }
 
@@ -152,7 +190,7 @@ async function syncPeriodLog(
 
   if (action.type === "delete") {
     const { error } = await supabase
-      .from("period_day_logs")
+      .from("period_logs")
       .delete()
       .eq("user_id", userId)
       .eq("log_date", checkinDate);
@@ -160,7 +198,7 @@ async function syncPeriodLog(
   }
 
   const { error } = await supabase
-    .from("period_day_logs")
+    .from("period_logs")
     .upsert(
       { user_id: userId, log_date: checkinDate, flow_intensity: action.flowIntensity },
       { onConflict: "user_id,log_date" },
@@ -181,8 +219,8 @@ export async function getRecentCheckins(limit: number): Promise<GetRecentCheckin
   if (!user) return { status: "signed_out" };
 
   const { data: rows, error } = await supabase
-    .from("daily_checkins")
-    .select("id, checkin_date, flow, mood, energy_level, sleep_quality, notes")
+    .from("daily_logs")
+    .select("id, checkin_date, flow, notes")
     .eq("user_id", user.id)
     .order("checkin_date", { ascending: false })
     .limit(limit);
@@ -194,27 +232,35 @@ export async function getRecentCheckins(limit: number): Promise<GetRecentCheckin
     return { status: "ready", entries: [] };
   }
 
-  const { data: symptomRows } = await supabase
-    .from("checkin_symptoms")
-    .select("checkin_id")
-    .in(
-      "checkin_id",
-      rows.map((r) => r.id),
-    );
+  const dailyLogIds = rows.map((r) => r.id);
+  const [{ data: symptomRows }, { data: moodRows }, { data: sleepRows }, { data: energyRows }] = await Promise.all([
+    supabase.from("symptom_logs").select("daily_log_id").in("daily_log_id", dailyLogIds),
+    supabase.from("mood_logs").select("daily_log_id, mood_key").in("daily_log_id", dailyLogIds),
+    supabase.from("sleep_logs").select("daily_log_id, sleep_quality").in("daily_log_id", dailyLogIds),
+    supabase.from("energy_logs").select("daily_log_id, energy_level").in("daily_log_id", dailyLogIds),
+  ]);
 
   const symptomCounts = new Map<string, number>();
   for (const row of symptomRows ?? []) {
-    symptomCounts.set(row.checkin_id, (symptomCounts.get(row.checkin_id) ?? 0) + 1);
+    symptomCounts.set(row.daily_log_id, (symptomCounts.get(row.daily_log_id) ?? 0) + 1);
   }
+  const moodsByDailyLog = new Map<string, Mood[]>();
+  for (const row of moodRows ?? []) {
+    const existing = moodsByDailyLog.get(row.daily_log_id);
+    if (existing) existing.push(row.mood_key);
+    else moodsByDailyLog.set(row.daily_log_id, [row.mood_key]);
+  }
+  const sleepByDailyLog = new Map((sleepRows ?? []).map((r) => [r.daily_log_id, r.sleep_quality]));
+  const energyByDailyLog = new Map((energyRows ?? []).map((r) => [r.daily_log_id, r.energy_level]));
 
   return {
     status: "ready",
     entries: rows.map((row) => ({
       checkinDate: row.checkin_date,
       flow: row.flow,
-      mood: row.mood,
-      energyLevel: row.energy_level,
-      sleepQuality: row.sleep_quality,
+      mood: moodsByDailyLog.get(row.id) ?? [],
+      energyLevel: energyByDailyLog.get(row.id) ?? null,
+      sleepQuality: sleepByDailyLog.get(row.id) ?? null,
       symptomCount: symptomCounts.get(row.id) ?? 0,
       hasNotes: Boolean(row.notes && row.notes.trim().length > 0),
     })),

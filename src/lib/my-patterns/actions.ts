@@ -18,6 +18,7 @@ import {
   type DailyMetricEntry,
   type TaggedLogEntry,
 } from "@/lib/patterns";
+import { saveUserPatternInsights, type UserPatternInsightInput } from "@/lib/repository/pattern-insights";
 import { createClient } from "@/lib/supabase/server";
 import { hasPremiumAccessForUser } from "@/lib/subscription";
 import type { MyPatternsData, PhasePatternSentence } from "./types";
@@ -82,7 +83,7 @@ export async function getMyPatterns(): Promise<GetMyPatternsResult> {
   }
 
   const { data: cycles } = await supabase
-    .from("cycles")
+    .from("menstrual_cycles")
     .select("start_date, period_length_days")
     .eq("user_id", user.id)
     .order("start_date", { ascending: true });
@@ -95,39 +96,50 @@ export async function getMyPatterns(): Promise<GetMyPatternsResult> {
   const today = formatISODate(todayEpochDays());
 
   const [{ data: periodLogs }, { data: checkins }] = await Promise.all([
-    supabase.from("period_day_logs").select("log_date").eq("user_id", user.id),
-    supabase
-      .from("daily_checkins")
-      .select("id, checkin_date, energy_level, sleep_quality, mood")
-      .eq("user_id", user.id),
+    supabase.from("period_logs").select("log_date").eq("user_id", user.id),
+    supabase.from("daily_logs").select("id, checkin_date").eq("user_id", user.id),
   ]);
 
   const checkinDateById = new Map((checkins ?? []).map((c) => [c.id, c.checkin_date]));
   const checkinIds = (checkins ?? []).map((c) => c.id);
 
-  const { data: symptomRows } =
+  const [{ data: symptomRows }, { data: moodRows }, { data: energyRows }, { data: sleepRows }] =
     checkinIds.length > 0
-      ? await supabase.from("checkin_symptoms").select("checkin_id, symptom_key").in("checkin_id", checkinIds)
-      : { data: [] as { checkin_id: string; symptom_key: string }[] };
+      ? await Promise.all([
+          supabase.from("symptom_logs").select("daily_log_id, symptom_key").in("daily_log_id", checkinIds),
+          supabase.from("mood_logs").select("daily_log_id, mood_key").in("daily_log_id", checkinIds),
+          supabase.from("energy_logs").select("daily_log_id, energy_level").in("daily_log_id", checkinIds),
+          supabase.from("sleep_logs").select("daily_log_id, sleep_quality").in("daily_log_id", checkinIds),
+        ])
+      : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
   const symptomLogs: TaggedLogEntry[] = (symptomRows ?? [])
     .map((row) => {
-      const date = checkinDateById.get(row.checkin_id);
+      const date = checkinDateById.get(row.daily_log_id);
       return date ? { date, key: row.symptom_key } : null;
     })
     .filter((entry): entry is TaggedLogEntry => entry !== null);
 
-  const moodLogs: TaggedLogEntry[] = (checkins ?? []).flatMap((c) =>
-    c.mood.map((m) => ({ date: c.checkin_date, key: m })),
-  );
+  const moodLogs: TaggedLogEntry[] = (moodRows ?? [])
+    .map((row) => {
+      const date = checkinDateById.get(row.daily_log_id);
+      return date ? { date, key: row.mood_key as string } : null;
+    })
+    .filter((entry): entry is TaggedLogEntry => entry !== null);
 
-  const energyEntries: DailyMetricEntry[] = (checkins ?? [])
-    .filter((c) => c.energy_level != null)
-    .map((c) => ({ date: c.checkin_date, value: c.energy_level as number }));
+  const energyEntries: DailyMetricEntry[] = (energyRows ?? [])
+    .map((row) => {
+      const date = checkinDateById.get(row.daily_log_id);
+      return date ? { date, value: row.energy_level } : null;
+    })
+    .filter((entry): entry is DailyMetricEntry => entry !== null);
 
-  const sleepEntries: DailyMetricEntry[] = (checkins ?? [])
-    .filter((c) => c.sleep_quality != null)
-    .map((c) => ({ date: c.checkin_date, value: c.sleep_quality as number }));
+  const sleepEntries: DailyMetricEntry[] = (sleepRows ?? [])
+    .map((row) => {
+      const date = checkinDateById.get(row.daily_log_id);
+      return date ? { date, value: row.sleep_quality } : null;
+    })
+    .filter((entry): entry is DailyMetricEntry => entry !== null);
 
   const cycleLength = analyzeCycleLengthTrend(completedCycles, today);
   const periodDuration = analyzePeriodDurationTrend(
@@ -176,6 +188,47 @@ export async function getMyPatterns(): Promise<GetMyPatternsResult> {
     sleep.patterns.length > 0 ||
     energy.profile.length > 0 ||
     sleep.profile.length > 0;
+
+  const patternRows: UserPatternInsightInput[] = [
+    ...symptomPhasePatterns.map((p) => ({
+      patternType: "symptom_phase" as const,
+      subjectKey: p.key,
+      sentence: p.sentence,
+      occurrences: p.occurrences,
+      eligibleCycles: p.eligibleCycles,
+    })),
+    ...moodPatterns.map((p) => ({
+      patternType: "mood_phase" as const,
+      subjectKey: p.key,
+      sentence: p.sentence,
+      occurrences: p.occurrences,
+      eligibleCycles: p.eligibleCycles,
+    })),
+    ...cravingPatterns.map((p) => ({
+      patternType: "craving_phase" as const,
+      subjectKey: p.key,
+      sentence: p.sentence,
+      occurrences: p.occurrences,
+      eligibleCycles: p.eligibleCycles,
+    })),
+    ...energy.patterns.map((p) => ({
+      patternType: "energy_window" as const,
+      subjectKey: null,
+      sentence: p.sentence,
+      occurrences: null,
+      eligibleCycles: p.cycleCount,
+    })),
+    ...sleep.patterns.map((p) => ({
+      patternType: "sleep_window" as const,
+      subjectKey: null,
+      sentence: p.sentence,
+      occurrences: null,
+      eligibleCycles: p.cycleCount,
+    })),
+  ];
+
+  // Best-effort snapshot — never fail the My Patterns response over this.
+  void saveUserPatternInsights(supabase, user.id, patternRows);
 
   return {
     status: "ready",

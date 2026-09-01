@@ -27,7 +27,7 @@ export async function getAdminDashboardStats(): Promise<GetAdminDashboardStatsRe
     supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", sevenDaysAgo),
     supabase.from("subscriptions").select("id", { count: "exact", head: true }).in("status", ["active", "trialing"]),
-    supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_admin", true),
+    supabase.from("admin_users").select("user_id", { count: "exact", head: true }),
   ]);
 
   if (totalUsers.error || newUsers.error || activeSubscriptions.error || admins.error) {

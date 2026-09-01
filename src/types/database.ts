@@ -98,16 +98,8 @@ interface ProfilesTable {
     avg_cycle_length_days: number | null;
     avg_period_length_days: number | null;
     cycle_regularity: CycleRegularity | null;
-    goals: Goal[];
     onboarding_completed_at: string | null;
-    fertility_tracking_enabled: boolean;
-    dietary_preference: DietaryPreference;
-    food_allergies: string[];
-    foods_to_avoid: string[];
-    workout_preferences: MovementType[];
-    is_admin: boolean;
     stripe_customer_id: string | null;
-    personalization_enabled: boolean;
     created_at: string;
     updated_at: string;
   };
@@ -119,22 +111,76 @@ interface ProfilesTable {
     avg_cycle_length_days?: number | null;
     avg_period_length_days?: number | null;
     cycle_regularity?: CycleRegularity | null;
-    goals?: Goal[];
     onboarding_completed_at?: string | null;
-    fertility_tracking_enabled?: boolean;
-    dietary_preference?: DietaryPreference;
-    food_allergies?: string[];
-    foods_to_avoid?: string[];
-    workout_preferences?: MovementType[];
-    is_admin?: boolean;
     stripe_customer_id?: string | null;
-    personalization_enabled?: boolean;
   };
   Update: Partial<ProfilesTable["Insert"]>;
   Relationships: [];
 }
 
-interface SymptomCatalogTable {
+/** Renamed from profiles.{dietary_preference, food_allergies, foods_to_avoid, workout_preferences, personalization_enabled, fertility_tracking_enabled} — see the normalized schema refactor migration. */
+interface UserPreferencesTable {
+  Row: {
+    user_id: string;
+    dietary_preference: DietaryPreference;
+    food_allergies: string[];
+    foods_to_avoid: string[];
+    workout_preferences: MovementType[];
+    personalization_enabled: boolean;
+    fertility_tracking_enabled: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    user_id: string;
+    dietary_preference?: DietaryPreference;
+    food_allergies?: string[];
+    foods_to_avoid?: string[];
+    workout_preferences?: MovementType[];
+    personalization_enabled?: boolean;
+    fertility_tracking_enabled?: boolean;
+  };
+  Update: Partial<UserPreferencesTable["Insert"]>;
+  Relationships: [];
+}
+
+/** Renamed from profiles.goals (was a text[]) — one row per selected goal. */
+interface UserGoalsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    goal_key: Goal;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    goal_key: Goal;
+  };
+  Update: Partial<UserGoalsTable["Insert"]>;
+  Relationships: [];
+}
+
+export type AdminRole = "admin" | "moderator" | "support";
+
+/** Replaces profiles.is_admin. Only role = "admin" can manage this table (grant/revoke access) — see the RLS policy. */
+interface AdminUsersTable {
+  Row: {
+    user_id: string;
+    role: AdminRole;
+    granted_at: string;
+    granted_by: string | null;
+  };
+  Insert: {
+    user_id: string;
+    role?: AdminRole;
+    granted_by?: string | null;
+  };
+  Update: Partial<AdminUsersTable["Insert"]>;
+  Relationships: [];
+}
+
+interface SymptomDefinitionsTable {
   Row: {
     id: string;
     key: string;
@@ -149,7 +195,7 @@ interface SymptomCatalogTable {
     sort_order?: number;
     is_active?: boolean;
   };
-  Update: Partial<SymptomCatalogTable["Insert"]>;
+  Update: Partial<SymptomDefinitionsTable["Insert"]>;
   Relationships: [];
 }
 
@@ -167,7 +213,8 @@ interface ProfileCommonSymptomsTable {
   Relationships: [];
 }
 
-interface CyclesTable {
+/** Renamed from cycles. */
+interface MenstrualCyclesTable {
   Row: {
     id: string;
     user_id: string;
@@ -187,11 +234,12 @@ interface CyclesTable {
     period_length_days?: number | null;
     source?: CycleSource;
   };
-  Update: Partial<CyclesTable["Insert"]>;
+  Update: Partial<MenstrualCyclesTable["Insert"]>;
   Relationships: [];
 }
 
-interface PeriodDayLogsTable {
+/** Renamed from period_day_logs. cycle_id references menstrual_cycles. */
+interface PeriodLogsTable {
   Row: {
     id: string;
     user_id: string;
@@ -207,7 +255,7 @@ interface PeriodDayLogsTable {
     log_date: string;
     flow_intensity?: FlowIntensity | null;
   };
-  Update: Partial<PeriodDayLogsTable["Insert"]>;
+  Update: Partial<PeriodLogsTable["Insert"]>;
   Relationships: [];
 }
 
@@ -252,15 +300,13 @@ interface DailyInsightFeedbackTable {
   Relationships: [];
 }
 
-interface DailyCheckinsTable {
+/** Renamed from daily_checkins. mood/energy_level/sleep_quality moved out to mood_logs/energy_logs/sleep_logs. */
+interface DailyLogsTable {
   Row: {
     id: string;
     user_id: string;
     checkin_date: string;
     flow: CheckinFlow | null;
-    mood: Mood[];
-    energy_level: number | null;
-    sleep_quality: number | null;
     pain_severity: number | null;
     discharge: DischargeType | null;
     exercise: ExerciseIntensity | null;
@@ -275,9 +321,6 @@ interface DailyCheckinsTable {
     user_id: string;
     checkin_date: string;
     flow?: CheckinFlow | null;
-    mood?: Mood[];
-    energy_level?: number | null;
-    sleep_quality?: number | null;
     pain_severity?: number | null;
     discharge?: DischargeType | null;
     exercise?: ExerciseIntensity | null;
@@ -285,22 +328,80 @@ interface DailyCheckinsTable {
     notes?: string | null;
     intercourse?: boolean | null;
   };
-  Update: Partial<DailyCheckinsTable["Insert"]>;
+  Update: Partial<DailyLogsTable["Insert"]>;
   Relationships: [];
 }
 
-interface CheckinSymptomsTable {
+/** Extracted from daily_checkins.mood (was a text[]) — one row per mood tag. */
+interface MoodLogsTable {
   Row: {
-    checkin_id: string;
+    id: string;
+    user_id: string;
+    daily_log_id: string;
+    mood_key: Mood;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    daily_log_id: string;
+    mood_key: Mood;
+  };
+  Update: Partial<MoodLogsTable["Insert"]>;
+  Relationships: [];
+}
+
+/** Extracted from daily_checkins.sleep_quality — one row per daily_logs entry that set it. */
+interface SleepLogsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    daily_log_id: string;
+    sleep_quality: number;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    daily_log_id: string;
+    sleep_quality: number;
+  };
+  Update: Partial<SleepLogsTable["Insert"]>;
+  Relationships: [];
+}
+
+/** Extracted from daily_checkins.energy_level — one row per daily_logs entry that set it. */
+interface EnergyLogsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    daily_log_id: string;
+    energy_level: number;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    daily_log_id: string;
+    energy_level: number;
+  };
+  Update: Partial<EnergyLogsTable["Insert"]>;
+  Relationships: [];
+}
+
+/** Renamed from checkin_symptoms; checkin_id renamed to daily_log_id. */
+interface SymptomLogsTable {
+  Row: {
+    daily_log_id: string;
     user_id: string;
     symptom_key: string;
   };
   Insert: {
-    checkin_id: string;
+    daily_log_id: string;
     user_id: string;
     symptom_key: string;
   };
-  Update: Partial<CheckinSymptomsTable["Insert"]>;
+  Update: Partial<SymptomLogsTable["Insert"]>;
   Relationships: [];
 }
 
@@ -332,21 +433,40 @@ interface SafetyRulesTable {
 
 export type AssistantMessageRole = "user" | "assistant";
 
-interface AssistantMessagesTable {
+/** One row per user's ongoing chat thread. unique(user_id) matches the app's current single-thread UX. */
+interface AiConversationsTable {
   Row: {
     id: string;
     user_id: string;
+    title: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    title?: string | null;
+  };
+  Update: Partial<AiConversationsTable["Insert"]>;
+  Relationships: [];
+}
+
+/** Renamed from assistant_messages; user_id replaced by conversation_id (join ai_conversations for the owning user). */
+interface AiMessagesTable {
+  Row: {
+    id: string;
+    conversation_id: string;
     role: AssistantMessageRole;
     content: string;
     created_at: string;
   };
   Insert: {
     id?: string;
-    user_id: string;
+    conversation_id: string;
     role: AssistantMessageRole;
     content: string;
   };
-  Update: Partial<AssistantMessagesTable["Insert"]>;
+  Update: Partial<AiMessagesTable["Insert"]>;
   Relationships: [];
 }
 
@@ -391,6 +511,163 @@ interface StripeWebhookEventsTable {
     type: string;
   };
   Update: Partial<StripeWebhookEventsTable["Insert"]>;
+  Relationships: [];
+}
+
+export type SubscriptionEventType =
+  | "checkout_started"
+  | "subscription_created"
+  | "subscription_updated"
+  | "subscription_canceled"
+  | "payment_failed"
+  | "trial_ending";
+
+/** Readable audit trail of subscription lifecycle events (distinct from stripe_webhook_events, which is service-role-only idempotency bookkeeping). */
+interface SubscriptionEventsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    subscription_id: string | null;
+    event_type: SubscriptionEventType;
+    stripe_event_id: string | null;
+    payload: Record<string, unknown>;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    subscription_id?: string | null;
+    event_type: SubscriptionEventType;
+    stripe_event_id?: string | null;
+    payload?: Record<string, unknown>;
+  };
+  Update: Partial<SubscriptionEventsTable["Insert"]>;
+  Relationships: [];
+}
+
+/** A persisted snapshot of a cycle-engine prediction — the live calculation in src/lib/cycle-engine remains the source of truth for what a user sees right now. */
+interface CyclePredictionsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    predicted_period_start: string;
+    confidence: "high" | "moderate" | "low";
+    current_phase: CyclePhase;
+    current_cycle_day: number;
+    computed_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    predicted_period_start: string;
+    confidence: "high" | "moderate" | "low";
+    current_phase: CyclePhase;
+    current_cycle_day: number;
+  };
+  Update: Partial<CyclePredictionsTable["Insert"]>;
+  Relationships: [];
+}
+
+/** A persisted snapshot of a generated daily body-insight — distinct from daily_insight_feedback, which stores the user's reaction to one. */
+interface PersonalizedInsightsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    insight_date: string;
+    cycle_phase: CyclePhase;
+    headline: string;
+    sections: unknown[];
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    insight_date: string;
+    cycle_phase: CyclePhase;
+    headline: string;
+    sections?: unknown[];
+  };
+  Update: Partial<PersonalizedInsightsTable["Insert"]>;
+  Relationships: [];
+}
+
+export type PatternType = "symptom_phase" | "mood_phase" | "craving_phase" | "energy_window" | "sleep_window";
+
+/** A persisted snapshot of a computed pattern sentence (see src/lib/patterns/analyze.ts). */
+interface UserPatternInsightsTable {
+  Row: {
+    id: string;
+    user_id: string;
+    pattern_type: PatternType;
+    subject_key: string | null;
+    sentence: string;
+    occurrences: number | null;
+    eligible_cycles: number | null;
+    computed_at: string;
+  };
+  Insert: {
+    id?: string;
+    user_id: string;
+    pattern_type: PatternType;
+    subject_key?: string | null;
+    sentence: string;
+    occurrences?: number | null;
+    eligible_cycles?: number | null;
+  };
+  Update: Partial<UserPatternInsightsTable["Insert"]>;
+  Relationships: [];
+}
+
+interface ContentCategoriesTable {
+  Row: {
+    id: string;
+    key: string;
+    label: string;
+    sort_order: number;
+  };
+  Insert: {
+    id?: string;
+    key: string;
+    label: string;
+    sort_order?: number;
+  };
+  Update: Partial<ContentCategoriesTable["Insert"]>;
+  Relationships: [];
+}
+
+export type ContentArticleStatus = "draft" | "in_review" | "published" | "archived";
+
+/** General editorial articles — separate from pregnancy_week_content, which keeps its own pregnancy-specific governance workflow. Only status = published rows are selectable by non-admins (enforced in RLS). */
+interface ContentArticlesTable {
+  Row: {
+    id: string;
+    category_id: string | null;
+    slug: string;
+    title: string;
+    body: string;
+    status: ContentArticleStatus;
+    source: string | null;
+    source_url: string | null;
+    medical_reviewer: string | null;
+    date_reviewed: string | null;
+    published_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    category_id?: string | null;
+    slug: string;
+    title: string;
+    body: string;
+    status?: ContentArticleStatus;
+    source?: string | null;
+    source_url?: string | null;
+    medical_reviewer?: string | null;
+    date_reviewed?: string | null;
+    published_at?: string | null;
+  };
+  Update: Partial<ContentArticlesTable["Insert"]>;
   Relationships: [];
 }
 
@@ -940,17 +1217,30 @@ export interface Database {
   public: {
     Tables: {
       profiles: ProfilesTable;
-      symptom_catalog: SymptomCatalogTable;
+      user_preferences: UserPreferencesTable;
+      user_goals: UserGoalsTable;
+      admin_users: AdminUsersTable;
+      symptom_definitions: SymptomDefinitionsTable;
       profile_common_symptoms: ProfileCommonSymptomsTable;
-      cycles: CyclesTable;
-      period_day_logs: PeriodDayLogsTable;
+      menstrual_cycles: MenstrualCyclesTable;
+      period_logs: PeriodLogsTable;
+      cycle_predictions: CyclePredictionsTable;
       notification_preferences: NotificationPreferencesTable;
       daily_insight_feedback: DailyInsightFeedbackTable;
-      daily_checkins: DailyCheckinsTable;
-      checkin_symptoms: CheckinSymptomsTable;
+      personalized_insights: PersonalizedInsightsTable;
+      user_pattern_insights: UserPatternInsightsTable;
+      daily_logs: DailyLogsTable;
+      mood_logs: MoodLogsTable;
+      sleep_logs: SleepLogsTable;
+      energy_logs: EnergyLogsTable;
+      symptom_logs: SymptomLogsTable;
       safety_rules: SafetyRulesTable;
-      assistant_messages: AssistantMessagesTable;
+      ai_conversations: AiConversationsTable;
+      ai_messages: AiMessagesTable;
+      content_categories: ContentCategoriesTable;
+      content_articles: ContentArticlesTable;
       subscriptions: SubscriptionsTable;
+      subscription_events: SubscriptionEventsTable;
       stripe_webhook_events: StripeWebhookEventsTable;
       rate_limit_hits: RateLimitHitsTable;
       account_deletion_log: AccountDeletionLogTable;

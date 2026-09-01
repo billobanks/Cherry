@@ -5,5 +5,5 @@ import { LearnView } from "@/components/learn/learn-view";
 export default function LearnPreviewPage() {
   if (process.env.NODE_ENV === "production") notFound();
 
-  return <LearnView initialPhase="luteal" />;
+  return <LearnView initialPhase="luteal" articles={[]} />;
 }

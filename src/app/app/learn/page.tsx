@@ -14,5 +14,5 @@ export default async function LearnPage() {
     redirect("/login");
   }
 
-  return <LearnView initialPhase={result.currentPhase} />;
+  return <LearnView initialPhase={result.currentPhase} articles={result.articles} />;
 }

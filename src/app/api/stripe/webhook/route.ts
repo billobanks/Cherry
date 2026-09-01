@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import { recordSubscriptionEvent } from "@/lib/repository/subscription-events";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { deriveSubscriptionUpsert } from "@/lib/subscription";
+import type { SubscriptionEventType } from "@/types/database";
 
 /**
  * Stripe webhooks — never trust a client-reported subscription state, this
@@ -18,6 +20,8 @@ type SupabaseServiceClient = ReturnType<typeof createServiceRoleClient>;
 async function upsertSubscriptionFromStripe(
   supabase: SupabaseServiceClient,
   subscription: Stripe.Subscription,
+  eventType: SubscriptionEventType,
+  stripeEventId: string,
 ): Promise<void> {
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
   const periodEnd = subscription.items.data[0]?.current_period_end ?? null;
@@ -41,22 +45,37 @@ async function upsertSubscriptionFromStripe(
     return;
   }
 
-  const { error } = await supabase.from("subscriptions").upsert(
-    {
-      user_id: profile.id,
-      stripe_customer_id: payload.stripeCustomerId,
-      stripe_subscription_id: payload.stripeSubscriptionId,
-      plan: payload.plan,
-      status: payload.status,
-      current_period_end: payload.currentPeriodEnd,
-      cancel_at_period_end: payload.cancelAtPeriodEnd,
-    },
-    { onConflict: "user_id" },
-  );
+  const { data: subscriptionRow, error } = await supabase
+    .from("subscriptions")
+    .upsert(
+      {
+        user_id: profile.id,
+        stripe_customer_id: payload.stripeCustomerId,
+        stripe_subscription_id: payload.stripeSubscriptionId,
+        plan: payload.plan,
+        status: payload.status,
+        current_period_end: payload.currentPeriodEnd,
+        cancel_at_period_end: payload.cancelAtPeriodEnd,
+      },
+      { onConflict: "user_id" },
+    )
+    .select("id")
+    .single();
 
   if (error) {
     console.error("Stripe webhook: failed to upsert subscription", error);
     throw new Error("Failed to persist subscription update.");
+  }
+
+  const { error: eventError } = await recordSubscriptionEvent(supabase, {
+    userId: profile.id,
+    subscriptionId: subscriptionRow?.id ?? null,
+    eventType,
+    stripeEventId,
+    payload: { status: payload.status, plan: payload.plan },
+  });
+  if (eventError) {
+    console.error("Stripe webhook: failed to record subscription event", eventError);
   }
 }
 
@@ -105,14 +124,20 @@ export async function POST(request: Request): Promise<Response> {
         const session = event.data.object;
         if (typeof session.subscription === "string") {
           const subscription = await stripe.subscriptions.retrieve(session.subscription);
-          await upsertSubscriptionFromStripe(supabase, subscription);
+          await upsertSubscriptionFromStripe(supabase, subscription, "checkout_started", event.id);
         }
         break;
       }
-      case "customer.subscription.created":
-      case "customer.subscription.updated":
+      case "customer.subscription.created": {
+        await upsertSubscriptionFromStripe(supabase, event.data.object, "subscription_created", event.id);
+        break;
+      }
+      case "customer.subscription.updated": {
+        await upsertSubscriptionFromStripe(supabase, event.data.object, "subscription_updated", event.id);
+        break;
+      }
       case "customer.subscription.deleted": {
-        await upsertSubscriptionFromStripe(supabase, event.data.object);
+        await upsertSubscriptionFromStripe(supabase, event.data.object, "subscription_canceled", event.id);
         break;
       }
       default:

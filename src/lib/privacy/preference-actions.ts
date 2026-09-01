@@ -21,14 +21,10 @@ export async function getPrivacyPreferences(): Promise<GetPrivacyPreferencesResu
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed_out" };
 
-  const [{ data: profile, error: profileError }, { data: notificationRows }] = await Promise.all([
-    supabase.from("profiles").select("personalization_enabled").eq("id", user.id).single(),
+  const [{ data: preferences }, { data: notificationRows }] = await Promise.all([
+    supabase.from("user_preferences").select("personalization_enabled").eq("user_id", user.id).maybeSingle(),
     supabase.from("notification_preferences").select("category, enabled").eq("user_id", user.id),
   ]);
-
-  if (profileError || !profile) {
-    return { status: "error", message: "We couldn't load your preferences." };
-  }
 
   const enabledByCategory = new Map((notificationRows ?? []).map((r) => [r.category, r.enabled]));
   const notificationPreferences: NotificationPreferenceRow[] = NOTIFICATION_OPTIONS.map((option) => ({
@@ -39,7 +35,7 @@ export async function getPrivacyPreferences(): Promise<GetPrivacyPreferencesResu
   return {
     status: "ready",
     notificationPreferences,
-    personalizationEnabled: profile.personalization_enabled,
+    personalizationEnabled: preferences?.personalization_enabled ?? true,
   };
 }
 
@@ -73,9 +69,8 @@ export async function updatePersonalizationSetting(
   if (!user) return { success: false, message: "Please sign in." };
 
   const { error } = await supabase
-    .from("profiles")
-    .update({ personalization_enabled: enabled })
-    .eq("id", user.id);
+    .from("user_preferences")
+    .upsert({ user_id: user.id, personalization_enabled: enabled }, { onConflict: "user_id" });
 
   return error ? { success: false, message: "Couldn't save that setting." } : { success: true };
 }

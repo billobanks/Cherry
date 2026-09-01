@@ -3,10 +3,17 @@
 import { useState } from "react";
 import { PHASE_LABELS, type CyclePhase } from "@/lib/cycle-engine";
 import { PHASE_SECTION_CONTENT, SECTION_ORDER, SECTION_TITLES } from "@/lib/insights";
+import type { ContentArticleSummary } from "@/lib/repository/content";
 
 const PHASES: CyclePhase[] = ["menstrual", "follicular", "ovulation_window", "luteal"];
 
-export function LearnView({ initialPhase }: { initialPhase: CyclePhase | null }) {
+export function LearnView({
+  initialPhase,
+  articles,
+}: {
+  initialPhase: CyclePhase | null;
+  articles: ContentArticleSummary[];
+}) {
   const [phase, setPhase] = useState<CyclePhase>(initialPhase ?? "menstrual");
   const content = PHASE_SECTION_CONTENT[phase];
 
@@ -59,6 +66,19 @@ export function LearnView({ initialPhase }: { initialPhase: CyclePhase | null })
           );
         })}
       </div>
+
+      {articles.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="font-heading text-lg font-medium">More from Cherry</h2>
+          <ul className="flex flex-col gap-2">
+            {articles.map((article) => (
+              <li key={article.slug} className="rounded-2xl border border-border bg-card px-5 py-4">
+                <p className="text-[15px] font-medium text-foreground">{article.title}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

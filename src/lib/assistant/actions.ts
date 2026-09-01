@@ -22,6 +22,21 @@ const SYMPTOM_LABELS: Record<string, string> = Object.fromEntries(
 
 const messageSchema = z.string().trim().min(1, "Type a question first.").max(2000, "Keep it under 2000 characters.");
 
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+/** Every user has at most one conversation (see ai_conversations' unique(user_id)) — get it, or create it on first message. */
+async function getOrCreateConversationId(supabase: Supabase, userId: string): Promise<string | null> {
+  const { data: existing } = await supabase.from("ai_conversations").select("id").eq("user_id", userId).maybeSingle();
+  if (existing) return existing.id;
+
+  const { data: created, error } = await supabase
+    .from("ai_conversations")
+    .insert({ user_id: userId })
+    .select("id")
+    .single();
+  return error ? null : created.id;
+}
+
 export type GetAssistantConversationResult =
   | { status: "ready"; messages: AssistantMessage[] }
   | { status: "signed_out" }
@@ -42,10 +57,13 @@ export async function getAssistantConversation(): Promise<GetAssistantConversati
     return { status: "premium_required" };
   }
 
+  const { data: conversation } = await supabase.from("ai_conversations").select("id").eq("user_id", user.id).maybeSingle();
+  if (!conversation) return { status: "ready", messages: [] };
+
   const { data, error } = await supabase
-    .from("assistant_messages")
+    .from("ai_messages")
     .select("role, content")
-    .eq("user_id", user.id)
+    .eq("conversation_id", conversation.id)
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -97,20 +115,21 @@ export async function sendAssistantMessage(rawMessage: string): Promise<SendAssi
 
   const todayISO = formatISODate(todayEpochDays());
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(
-      "last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, personalization_enabled",
-    )
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { data: preferences }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity")
+      .eq("id", user.id)
+      .single(),
+    supabase.from("user_preferences").select("personalization_enabled").eq("user_id", user.id).maybeSingle(),
+  ]);
 
-  const personalizationEnabled = profile?.personalization_enabled ?? true;
+  const personalizationEnabled = preferences?.personalization_enabled ?? true;
 
   let cycleInsights = null;
   if (personalizationEnabled && profile?.last_period_start_date) {
     const { data: cycles } = await supabase
-      .from("cycles")
+      .from("menstrual_cycles")
       .select("start_date")
       .eq("user_id", user.id)
       .order("start_date", { ascending: true });
@@ -128,44 +147,46 @@ export async function sendAssistantMessage(rawMessage: string): Promise<SendAssi
     }
   }
 
-  const { data: todayCheckin } = await supabase
-    .from("daily_checkins")
-    .select("id, flow, energy_level, sleep_quality, pain_severity, mood")
+  const { data: todayLog } = await supabase
+    .from("daily_logs")
+    .select("id, flow, pain_severity")
     .eq("user_id", user.id)
     .eq("checkin_date", todayISO)
     .maybeSingle();
 
   let today: AssistantTodaySignals | null = null;
-  if (todayCheckin) {
-    const { data: symptomRows } = await supabase
-      .from("checkin_symptoms")
-      .select("symptom_key")
-      .eq("checkin_id", todayCheckin.id);
+  if (todayLog) {
+    const [{ data: symptomRows }, { data: moodRows }, { data: sleepRow }, { data: energyRow }] = await Promise.all([
+      supabase.from("symptom_logs").select("symptom_key").eq("daily_log_id", todayLog.id),
+      supabase.from("mood_logs").select("mood_key").eq("daily_log_id", todayLog.id),
+      supabase.from("sleep_logs").select("sleep_quality").eq("daily_log_id", todayLog.id).maybeSingle(),
+      supabase.from("energy_logs").select("energy_level").eq("daily_log_id", todayLog.id).maybeSingle(),
+    ]);
     today = {
-      flow: todayCheckin.flow,
-      energyLevel: todayCheckin.energy_level,
-      sleepQuality: todayCheckin.sleep_quality,
-      painSeverity: todayCheckin.pain_severity,
-      mood: todayCheckin.mood,
+      flow: todayLog.flow,
+      energyLevel: energyRow?.energy_level ?? null,
+      sleepQuality: sleepRow?.sleep_quality ?? null,
+      painSeverity: todayLog.pain_severity,
+      mood: (moodRows ?? []).map((m) => m.mood_key),
       symptomKeys: (symptomRows ?? []).map((s) => s.symptom_key),
     };
   }
 
   const windowStart = formatISODate(addDays(parseISODate(todayISO), -RECENT_SYMPTOM_WINDOW_DAYS));
-  const { data: recentCheckins } = await supabase
-    .from("daily_checkins")
+  const { data: recentLogs } = await supabase
+    .from("daily_logs")
     .select("id")
     .eq("user_id", user.id)
     .gte("checkin_date", windowStart)
     .lte("checkin_date", todayISO);
 
-  const recentCheckinIds = (recentCheckins ?? []).map((c) => c.id);
+  const recentLogIds = (recentLogs ?? []).map((c) => c.id);
   let recentSymptomCounts: { symptomKey: string; count: number }[] = [];
-  if (recentCheckinIds.length > 0) {
+  if (recentLogIds.length > 0) {
     const { data: recentSymptomRows } = await supabase
-      .from("checkin_symptoms")
+      .from("symptom_logs")
       .select("symptom_key")
-      .in("checkin_id", recentCheckinIds);
+      .in("daily_log_id", recentLogIds);
     const counts = new Map<string, number>();
     for (const row of recentSymptomRows ?? []) {
       counts.set(row.symptom_key, (counts.get(row.symptom_key) ?? 0) + 1);
@@ -193,10 +214,15 @@ export async function sendAssistantMessage(rawMessage: string): Promise<SendAssi
 
   const systemPrompt = buildAssistantSystemPrompt(context);
 
+  const conversationId = await getOrCreateConversationId(supabase, user.id);
+  if (!conversationId) {
+    return { status: "error", message: "Couldn't start a conversation — please try again." };
+  }
+
   const { data: historyRows } = await supabase
-    .from("assistant_messages")
+    .from("ai_messages")
     .select("role, content")
-    .eq("user_id", user.id)
+    .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(RECENT_MESSAGE_HISTORY_LIMIT);
 
@@ -204,8 +230,8 @@ export async function sendAssistantMessage(rawMessage: string): Promise<SendAssi
   const messages: AssistantMessage[] = [...conversationHistory, { role: "user", content: userMessage }];
 
   const { error: insertUserError } = await supabase
-    .from("assistant_messages")
-    .insert({ user_id: user.id, role: "user", content: userMessage });
+    .from("ai_messages")
+    .insert({ conversation_id: conversationId, role: "user", content: userMessage });
   if (insertUserError) {
     return { status: "error", message: "Couldn't send your message — please try again." };
   }
@@ -221,7 +247,7 @@ export async function sendAssistantMessage(rawMessage: string): Promise<SendAssi
     };
   }
 
-  await supabase.from("assistant_messages").insert({ user_id: user.id, role: "assistant", content: replyContent });
+  await supabase.from("ai_messages").insert({ conversation_id: conversationId, role: "assistant", content: replyContent });
 
   return {
     status: "ready",

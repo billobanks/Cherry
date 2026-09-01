@@ -76,13 +76,13 @@ export async function getSafetyContextForCheckin(checkinDate: string): Promise<G
 
   const [{ data: previousCheckin }, { data: recentCheckins }, { data: profile }] = await Promise.all([
     supabase
-      .from("daily_checkins")
+      .from("daily_logs")
       .select("pain_severity")
       .eq("user_id", user.id)
       .eq("checkin_date", previousDate)
       .maybeSingle(),
     supabase
-      .from("daily_checkins")
+      .from("daily_logs")
       .select("checkin_date, flow")
       .eq("user_id", user.id)
       .gte("checkin_date", lookbackStart)
@@ -100,7 +100,7 @@ export async function getSafetyContextForCheckin(checkinDate: string): Promise<G
   let isOutsideExpectedBleedingWindow = false;
   if (profile?.last_period_start_date) {
     const { data: cycles } = await supabase
-      .from("cycles")
+      .from("menstrual_cycles")
       .select("start_date")
       .eq("user_id", user.id)
       .order("start_date", { ascending: true });

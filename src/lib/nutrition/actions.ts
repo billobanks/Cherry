@@ -29,13 +29,14 @@ export async function getNutritionData(): Promise<GetNutritionDataResult> {
     return { status: "premium_required" };
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select(
-      "last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, dietary_preference, food_allergies, foods_to_avoid",
-    )
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile, error: profileError }, { data: preferences }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity")
+      .eq("id", user.id)
+      .single(),
+    supabase.from("user_preferences").select("dietary_preference, food_allergies, foods_to_avoid").eq("user_id", user.id).maybeSingle(),
+  ]);
 
   if (profileError || !profile) {
     return { status: "error", message: "We couldn't load your profile." };
@@ -44,8 +45,12 @@ export async function getNutritionData(): Promise<GetNutritionDataResult> {
     return { status: "needs_period_date" };
   }
 
+  const dietaryPreference = preferences?.dietary_preference ?? "none";
+  const foodAllergies = preferences?.food_allergies ?? [];
+  const foodsToAvoid = preferences?.foods_to_avoid ?? [];
+
   const { data: cycles } = await supabase
-    .from("cycles")
+    .from("menstrual_cycles")
     .select("start_date")
     .eq("user_id", user.id)
     .order("start_date", { ascending: true });
@@ -64,13 +69,13 @@ export async function getNutritionData(): Promise<GetNutritionDataResult> {
   }
 
   const copy = PHASE_NUTRITION_CONTENT[cycleInsights.currentPhase];
-  const avoidTerms = [...profile.food_allergies, ...profile.foods_to_avoid];
+  const avoidTerms = [...foodAllergies, ...foodsToAvoid];
 
   const foodCategories = NUTRIENT_CATEGORY_ORDER.map((category) => ({
     category,
     label: NUTRIENT_CATEGORY_LABELS[category],
     guidance: copy.categoryGuidance[category],
-    foods: filterFoods(FOOD_DATABASE[category], profile.dietary_preference, avoidTerms),
+    foods: filterFoods(FOOD_DATABASE[category], dietaryPreference, avoidTerms),
   }));
 
   const data: NutritionData = {
@@ -83,10 +88,10 @@ export async function getNutritionData(): Promise<GetNutritionDataResult> {
     whyHelpful: copy.whyHelpful,
     hydration: copy.hydration,
     foodCategories,
-    meals: filterMeals(copy.meals, profile.dietary_preference, avoidTerms),
-    dietaryPreference: profile.dietary_preference,
-    foodAllergies: profile.food_allergies,
-    foodsToAvoid: profile.foods_to_avoid,
+    meals: filterMeals(copy.meals, dietaryPreference, avoidTerms),
+    dietaryPreference,
+    foodAllergies,
+    foodsToAvoid,
   };
 
   return { status: "ready", data };
@@ -106,14 +111,15 @@ export async function updateNutritionPreferences(input: {
   const clean = (list: string[]) =>
     Array.from(new Set(list.map((s) => s.trim()).filter(Boolean))).slice(0, 25);
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({
+  const { error } = await supabase.from("user_preferences").upsert(
+    {
+      user_id: user.id,
       dietary_preference: input.dietaryPreference,
       food_allergies: clean(input.foodAllergies),
       foods_to_avoid: clean(input.foodsToAvoid),
-    })
-    .eq("id", user.id);
+    },
+    { onConflict: "user_id" },
+  );
 
   return error ? { success: false, message: "Couldn't save your preferences." } : { success: true };
 }

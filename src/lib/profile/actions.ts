@@ -29,13 +29,19 @@ export async function getProfile(): Promise<GetProfileResult> {
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed_out" };
 
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select(
-      "display_name, primary_focus, avg_cycle_length_days, avg_period_length_days, cycle_regularity, goals, dietary_preference, food_allergies, foods_to_avoid, workout_preferences",
-    )
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile, error }, { data: preferences }, { data: goalRows }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name, primary_focus, avg_cycle_length_days, avg_period_length_days, cycle_regularity")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("user_preferences")
+      .select("dietary_preference, food_allergies, foods_to_avoid, workout_preferences")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("user_goals").select("goal_key").eq("user_id", user.id),
+  ]);
 
   if (error || !profile) return { status: "error", message: "We couldn't load your profile." };
 
@@ -48,11 +54,11 @@ export async function getProfile(): Promise<GetProfileResult> {
       avgCycleLengthDays: profile.avg_cycle_length_days,
       avgPeriodLengthDays: profile.avg_period_length_days,
       cycleRegularity: profile.cycle_regularity,
-      goals: profile.goals,
-      dietaryPreference: profile.dietary_preference,
-      foodAllergies: profile.food_allergies,
-      foodsToAvoid: profile.foods_to_avoid,
-      workoutPreferences: profile.workout_preferences,
+      goals: (goalRows ?? []).map((g) => g.goal_key),
+      dietaryPreference: preferences?.dietary_preference ?? "none",
+      foodAllergies: preferences?.food_allergies ?? [],
+      foodsToAvoid: preferences?.foods_to_avoid ?? [],
+      workoutPreferences: preferences?.workout_preferences ?? [],
     },
   };
 }
@@ -81,9 +87,20 @@ export async function updateProfile(input: UpdateProfileInput): Promise<{ succes
       avg_cycle_length_days: input.avgCycleLengthDays,
       avg_period_length_days: input.avgPeriodLengthDays,
       cycle_regularity: input.cycleRegularity,
-      goals: input.goals,
     })
     .eq("id", user.id);
 
-  return error ? { success: false, message: "Couldn't save your profile." } : { success: true };
+  if (error) return { success: false, message: "Couldn't save your profile." };
+
+  const { error: deleteGoalsError } = await supabase.from("user_goals").delete().eq("user_id", user.id);
+  if (deleteGoalsError) return { success: false, message: "Couldn't save your goals." };
+
+  if (input.goals.length > 0) {
+    const { error: insertGoalsError } = await supabase
+      .from("user_goals")
+      .insert(input.goals.map((goalKey) => ({ user_id: user.id, goal_key: goalKey })));
+    if (insertGoalsError) return { success: false, message: "Couldn't save your goals." };
+  }
+
+  return { success: true };
 }

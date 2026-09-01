@@ -8,6 +8,7 @@ import type { SymptomLogEntry } from "@/lib/patterns";
 import { createClient } from "@/lib/supabase/server";
 import { buildTodayEngineOutput } from "@/lib/today-engine";
 import type { TodayEngineSignals } from "@/lib/today-engine";
+import type { Goal } from "@/types/database";
 import { computeUpcomingChanges } from "./upcoming-changes";
 import type { DashboardData, PatternDisplay, RecommendedCard, TodaysBody } from "./types";
 
@@ -28,13 +29,19 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed_out" };
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select(
-      "display_name, last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, goals, dietary_preference, food_allergies, foods_to_avoid, workout_preferences",
-    )
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile, error: profileError }, { data: preferences }, { data: goalRows }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name, last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("user_preferences")
+      .select("dietary_preference, food_allergies, foods_to_avoid, workout_preferences")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("user_goals").select("goal_key").eq("user_id", user.id),
+  ]);
 
   if (profileError || !profile) {
     return { status: "error", message: "We couldn't load your profile." };
@@ -43,8 +50,10 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
     return { status: "needs_period_date" };
   }
 
+  const goals: Goal[] = (goalRows ?? []).map((g) => g.goal_key);
+
   const { data: cycles } = await supabase
-    .from("cycles")
+    .from("menstrual_cycles")
     .select("start_date, period_length_days")
     .eq("user_id", user.id)
     .order("start_date", { ascending: true });
@@ -91,11 +100,11 @@ export async function getDashboardData(): Promise<GetDashboardDataResult> {
     phase: cycleInsights.currentPhase,
     today: todaySignals,
     historicalPatterns: patterns,
-    goals: profile.goals,
-    dietaryPreference: profile.dietary_preference,
-    foodAllergies: profile.food_allergies,
-    foodsToAvoid: profile.foods_to_avoid,
-    preferredMovementTypes: profile.workout_preferences,
+    goals,
+    dietaryPreference: preferences?.dietary_preference ?? "none",
+    foodAllergies: preferences?.food_allergies ?? [],
+    foodsToAvoid: preferences?.foods_to_avoid ?? [],
+    preferredMovementTypes: preferences?.workout_preferences ?? [],
   });
 
   const recommended: RecommendedCard[] = [
@@ -144,36 +153,41 @@ async function getTodaysData(
   userId: string,
   today: string,
 ): Promise<{ body: TodaysBody; signals: TodayEngineSignals | null }> {
-  const { data: checkin } = await supabase
-    .from("daily_checkins")
-    .select("id, mood, energy_level, sleep_quality")
+  const { data: dailyLog } = await supabase
+    .from("daily_logs")
+    .select("id")
     .eq("user_id", userId)
     .eq("checkin_date", today)
     .maybeSingle();
 
-  if (!checkin) {
+  if (!dailyLog) {
     return {
       body: { hasLoggedToday: false, mood: [], energyLevel: null, sleepQuality: null, hasCravings: false },
       signals: null,
     };
   }
 
-  const { data: symptoms } = await supabase
-    .from("checkin_symptoms")
-    .select("symptom_key")
-    .eq("checkin_id", checkin.id);
+  const [{ data: moodRows }, { data: sleepRow }, { data: energyRow }, { data: symptoms }] = await Promise.all([
+    supabase.from("mood_logs").select("mood_key").eq("daily_log_id", dailyLog.id),
+    supabase.from("sleep_logs").select("sleep_quality").eq("daily_log_id", dailyLog.id).maybeSingle(),
+    supabase.from("energy_logs").select("energy_level").eq("daily_log_id", dailyLog.id).maybeSingle(),
+    supabase.from("symptom_logs").select("symptom_key").eq("daily_log_id", dailyLog.id),
+  ]);
 
+  const mood = (moodRows ?? []).map((m) => m.mood_key);
+  const energyLevel = energyRow?.energy_level ?? null;
+  const sleepQuality = sleepRow?.sleep_quality ?? null;
   const symptomKeys = (symptoms ?? []).map((s) => s.symptom_key);
 
   return {
     body: {
       hasLoggedToday: true,
-      mood: checkin.mood,
-      energyLevel: checkin.energy_level,
-      sleepQuality: checkin.sleep_quality,
+      mood,
+      energyLevel,
+      sleepQuality,
       hasCravings: symptomKeys.includes("food_cravings"),
     },
-    signals: { energyLevel: checkin.energy_level, sleepQuality: checkin.sleep_quality, mood: checkin.mood, symptomKeys },
+    signals: { energyLevel, sleepQuality, mood, symptomKeys },
   };
 }
 
@@ -192,27 +206,27 @@ async function getPatterns(
     DEFAULT_PERIOD_LENGTH_DAYS,
   );
 
-  const { data: checkins } = await supabase
-    .from("daily_checkins")
+  const { data: dailyLogs } = await supabase
+    .from("daily_logs")
     .select("id, checkin_date")
     .eq("user_id", userId);
 
-  if (!checkins || checkins.length === 0) return [];
+  if (!dailyLogs || dailyLogs.length === 0) return [];
 
-  const checkinDateById = new Map(checkins.map((c) => [c.id, c.checkin_date]));
+  const logDateById = new Map(dailyLogs.map((c) => [c.id, c.checkin_date]));
 
   const { data: symptomRows } = await supabase
-    .from("checkin_symptoms")
-    .select("checkin_id, symptom_key")
+    .from("symptom_logs")
+    .select("daily_log_id, symptom_key")
     .eq("user_id", userId)
     .in(
-      "checkin_id",
-      checkins.map((c) => c.id),
+      "daily_log_id",
+      dailyLogs.map((c) => c.id),
     );
 
   const symptomLogs: SymptomLogEntry[] = (symptomRows ?? [])
     .map((row) => {
-      const date = checkinDateById.get(row.checkin_id);
+      const date = logDateById.get(row.daily_log_id);
       return date ? { date, symptomKey: row.symptom_key } : null;
     })
     .filter((entry): entry is SymptomLogEntry => entry !== null);

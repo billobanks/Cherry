@@ -1,6 +1,7 @@
 "use server";
 
 import { calculateCycleInsights } from "@/lib/cycle-engine";
+import { savePersonalizedInsight } from "@/lib/repository/personalized-insights";
 import { createClient } from "@/lib/supabase/server";
 import type { InsightFeedbackResponse, InsightSectionKey } from "@/types/database";
 import { generateDailyBodyInsight } from "./generate";
@@ -43,7 +44,7 @@ export async function getDailyBodyInsight(dateOverride?: string): Promise<DailyB
   }
 
   const [{ data: cycles }, { data: commonSymptoms }] = await Promise.all([
-    supabase.from("cycles").select("start_date").order("start_date", { ascending: false }).limit(24),
+    supabase.from("menstrual_cycles").select("start_date").order("start_date", { ascending: false }).limit(24),
     supabase.from("profile_common_symptoms").select("symptom_key").eq("user_id", user.id),
   ]);
 
@@ -97,6 +98,14 @@ export async function getDailyBodyInsight(dateOverride?: string): Promise<DailyB
     commonSymptomKeys: (commonSymptoms ?? []).map((s) => s.symptom_key),
     existingFeedback,
     priorPhaseAgreementSections,
+  });
+
+  // Best-effort snapshot — never fail the insights response over this.
+  void savePersonalizedInsight(supabase, user.id, {
+    insightDate,
+    cyclePhase: cycleInsights.currentPhase,
+    headline: insight.phaseLabel,
+    sections: insight.sections,
   });
 
   return { status: "ready", insight };

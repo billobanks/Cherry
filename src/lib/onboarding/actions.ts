@@ -151,10 +151,11 @@ async function persistOnboardingAnswers(
       avg_cycle_length_days: answers.avgCycleLengthDays,
       avg_period_length_days: answers.avgPeriodLengthDays,
       cycle_regularity: answers.cycleRegularity,
-      goals: answers.goals,
       onboarding_completed_at: new Date().toISOString(),
     })
     .eq("id", userId);
+
+  const goalRows = (answers.goals as Goal[]).map((goalKey) => ({ user_id: userId, goal_key: goalKey }));
 
   const notificationRows = (
     Object.entries(answers.notificationPreferences) as [
@@ -177,6 +178,10 @@ async function persistOnboardingAnswers(
     profileUpdate,
     supabase.from("notification_preferences").upsert(notificationRows),
   ];
+
+  if (goalRows.length > 0) {
+    tasks.push(supabase.from("user_goals").upsert(goalRows));
+  }
 
   if (symptomRows.length > 0) {
     tasks.push(supabase.from("profile_common_symptoms").upsert(symptomRows));
@@ -201,7 +206,7 @@ async function seedFirstCycle(
   if (!answers.lastPeriodStartDate) return { error: null };
 
   const { data: cycle, error: cycleError } = await supabase
-    .from("cycles")
+    .from("menstrual_cycles")
     .insert({
       user_id: userId,
       start_date: answers.lastPeriodStartDate,
@@ -215,7 +220,7 @@ async function seedFirstCycle(
     return { error: cycleError ?? { message: "Could not create initial cycle." } };
   }
 
-  const { error: logError } = await supabase.from("period_day_logs").upsert({
+  const { error: logError } = await supabase.from("period_logs").upsert({
     user_id: userId,
     cycle_id: cycle.id,
     log_date: answers.lastPeriodStartDate,

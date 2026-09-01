@@ -32,13 +32,14 @@ export async function getMovementRecommendation(): Promise<GetMovementRecommenda
     return { status: "premium_required" };
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select(
-      "last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity, workout_preferences",
-    )
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile, error: profileError }, { data: preferences }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("last_period_start_date, avg_cycle_length_days, avg_period_length_days, cycle_regularity")
+      .eq("id", user.id)
+      .single(),
+    supabase.from("user_preferences").select("workout_preferences").eq("user_id", user.id).maybeSingle(),
+  ]);
 
   if (profileError || !profile) {
     return { status: "error", message: "We couldn't load your profile." };
@@ -47,8 +48,10 @@ export async function getMovementRecommendation(): Promise<GetMovementRecommenda
     return { status: "needs_period_date" };
   }
 
+  const workoutPreferences = preferences?.workout_preferences ?? [];
+
   const { data: cycles } = await supabase
-    .from("cycles")
+    .from("menstrual_cycles")
     .select("start_date")
     .eq("user_id", user.id)
     .order("start_date", { ascending: true });
@@ -66,20 +69,25 @@ export async function getMovementRecommendation(): Promise<GetMovementRecommenda
     return { status: "error", message: "We couldn't estimate today's cycle phase." };
   }
 
-  const { data: checkin } = await supabase
-    .from("daily_checkins")
-    .select("id, energy_level, sleep_quality")
+  const { data: dailyLog } = await supabase
+    .from("daily_logs")
+    .select("id")
     .eq("user_id", user.id)
     .eq("checkin_date", cycleInsights.today)
     .maybeSingle();
 
+  let energyLevel: number | null = null;
+  let sleepQuality: number | null = null;
   let hasCramps = false;
   let hasFatigue = false;
-  if (checkin) {
-    const { data: symptoms } = await supabase
-      .from("checkin_symptoms")
-      .select("symptom_key")
-      .eq("checkin_id", checkin.id);
+  if (dailyLog) {
+    const [{ data: sleepRow }, { data: energyRow }, { data: symptoms }] = await Promise.all([
+      supabase.from("sleep_logs").select("sleep_quality").eq("daily_log_id", dailyLog.id).maybeSingle(),
+      supabase.from("energy_logs").select("energy_level").eq("daily_log_id", dailyLog.id).maybeSingle(),
+      supabase.from("symptom_logs").select("symptom_key").eq("daily_log_id", dailyLog.id),
+    ]);
+    energyLevel = energyRow?.energy_level ?? null;
+    sleepQuality = sleepRow?.sleep_quality ?? null;
     const keys = new Set((symptoms ?? []).map((s) => s.symptom_key));
     hasCramps = keys.has("cramps");
     hasFatigue = keys.has("fatigue");
@@ -87,19 +95,19 @@ export async function getMovementRecommendation(): Promise<GetMovementRecommenda
 
   const recommendation = generateMovementRecommendation({
     phase: cycleInsights.currentPhase,
-    energyLevel: checkin?.energy_level ?? null,
+    energyLevel,
     hasCramps,
     hasFatigue,
-    sleepQuality: checkin?.sleep_quality ?? null,
-    preferredTypes: profile.workout_preferences,
+    sleepQuality,
+    preferredTypes: workoutPreferences,
     dayNumber: parseISODate(cycleInsights.today),
   });
 
   return {
     status: "ready",
     recommendation,
-    hasLoggedToday: checkin !== null,
-    workoutPreferences: profile.workout_preferences,
+    hasLoggedToday: dailyLog !== null,
+    workoutPreferences,
   };
 }
 
@@ -113,9 +121,8 @@ export async function updateWorkoutPreferences(
   if (!user) return { success: false, message: "Please sign in." };
 
   const { error } = await supabase
-    .from("profiles")
-    .update({ workout_preferences: preferences })
-    .eq("id", user.id);
+    .from("user_preferences")
+    .upsert({ user_id: user.id, workout_preferences: preferences }, { onConflict: "user_id" });
 
   return error ? { success: false, message: "Couldn't save your preferences." } : { success: true };
 }

@@ -53,13 +53,15 @@ export async function listAdminUsers(): Promise<ListAdminUsersResult> {
   const ids = authUsers.map((u) => u.id);
   if (ids.length === 0) return { status: "ready", users: [] };
 
-  const [{ data: profiles }, { data: subscriptions }] = await Promise.all([
-    supabase.from("profiles").select("id, display_name, is_admin, created_at").in("id", ids),
+  const [{ data: profiles }, { data: subscriptions }, { data: adminRows }] = await Promise.all([
+    supabase.from("profiles").select("id, display_name, created_at").in("id", ids),
     supabase.from("subscriptions").select("user_id, plan, status").in("user_id", ids),
+    supabase.from("admin_users").select("user_id").in("user_id", ids),
   ]);
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
   const subscriptionByUserId = new Map((subscriptions ?? []).map((s) => [s.user_id, s]));
+  const adminUserIds = new Set((adminRows ?? []).map((a) => a.user_id));
 
   const users: AdminUserRow[] = authUsers
     .map((authUser) => {
@@ -70,7 +72,7 @@ export async function listAdminUsers(): Promise<ListAdminUsersResult> {
         email: authUser.email ?? null,
         displayName: profile?.display_name ?? null,
         createdAt: profile?.created_at ?? authUser.created_at,
-        isAdmin: profile?.is_admin ?? false,
+        isAdmin: adminUserIds.has(authUser.id),
         subscriptionPlan: subscription?.plan ?? null,
         subscriptionStatus: subscription?.status ?? null,
       };
@@ -89,6 +91,13 @@ export async function setUserAdmin(userId: string, isAdmin: boolean): Promise<{ 
     return { success: false, message: "You can't remove your own admin access." };
   }
 
-  const { error } = await supabase.from("profiles").update({ is_admin: isAdmin }).eq("id", userId);
+  // admin_users RLS only lets role='admin' rows write this table, so a
+  // moderator/support admin calling this will get an RLS-denied error here.
+  if (isAdmin) {
+    const { error } = await supabase.from("admin_users").upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id" });
+    return error ? { success: false, message: "Couldn't update that user." } : { success: true };
+  }
+
+  const { error } = await supabase.from("admin_users").delete().eq("user_id", userId);
   return error ? { success: false, message: "Couldn't update that user." } : { success: true };
 }
